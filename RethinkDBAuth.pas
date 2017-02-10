@@ -1,7 +1,7 @@
 unit RethinkDBAuth;
 
-{x$D-}
-{x$L-}
+{$D-}
+{$L-}
 
 interface
 
