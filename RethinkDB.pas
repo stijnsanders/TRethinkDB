@@ -13,6 +13,7 @@ type
   IRethinkDBTable=interface;//forward
   IRethinkDBTerm=interface;//forward
   IRethinkDBDatum=interface;//forward
+  IRethinkDBSequence=interface;//forward
   IRethinkDBStream=interface;//forward
 
   //////////////////////////////////////////////////////
@@ -44,11 +45,13 @@ type
     class function row:IRethinkDBDatum; overload;
     class function row(const RowName:WideString):IRethinkDBDatum; overload;
 
-    class function map(const sequence:IRethinkDBTerm;const fn:IRethinkDBTerm):IRethinkDBStream; overload;
-    class function map(const sequences:array of IRethinkDBTerm;const fn:IRethinkDBTerm):IRethinkDBStream; overload;
+    class function map(const sequences:array of IRethinkDBSequence;const fn:IRethinkDBTerm):IRethinkDBStream; overload;
+    class function map(const arrays:array of IRethinkDBDatum;const fn:IRethinkDBTerm):IRethinkDBDatum; overload;
 
     class function uuid(const Input:WideString=''):IRethinkDBDatum;
     class function http(const URL:WideString;const Options:IJSONDocument=nil):IRethinkDBDatum;
+    class function asc(const FieldName:WideString):IRethinkDBTerm;
+    class function desc(const FieldName:WideString):IRethinkDBTerm;
   end;
 
   {$IFDEF DEBUG}
@@ -94,6 +97,7 @@ type
   TRethinkDBBuilder=procedure(const x:UTF8String) of object;
 
   IRethinkDBTerm=interface(IUnknown)
+    ['{914532C9-49C6-4A46-81E5-40DA7EF7D1BD}']
     function Execute(Connection:TRethinkDBConnection;
       const Options:IJSONDocument=nil):IJSONDocument;
     function Run(Connection:TRethinkDBConnection;
@@ -109,6 +113,7 @@ type
   IRethinkDBBool=interface;//forward
 
   IRethinkDBDatum=interface(IRethinkDBTerm)
+    ['{F956274B-6368-48B4-805F-E93EEF83A856}']
     function eq(const v:OleVariant):IRethinkDBBool;
     function ne(const v:OleVariant):IRethinkDBBool;
     function lt(const v:OleVariant):IRethinkDBBool;
@@ -130,24 +135,29 @@ type
     //string
     function concat(const v:OleVariant):IRethinkDBDatum;
 
-    //array
+    //array //TODO: separate IRethinkDBArray
     function append(const v:OleVariant):IRethinkDBDatum;
     function prepend(const v:OleVariant):IRethinkDBDatum;
     function difference(const v:OleVariant):IRethinkDBDatum;
     function innerJoin(const otherSequence,predicate:IRethinkDBTerm):IRethinkDBDatum;
     function outerJoin(const otherSequence,predicate:IRethinkDBTerm):IRethinkDBDatum;
     function zip:IRethinkDBDatum;
-    function map(const fn:IRethinkDBTerm):IRethinkDBStream; overload;
-    function map(const sequences:array of IRethinkDBTerm;const fn:IRethinkDBTerm):IRethinkDBStream; overload;
+    function map(const fn:IRethinkDBTerm):IRethinkDBDatum; overload;
+    function map(const arrays:array of IRethinkDBDatum;const fn:IRethinkDBTerm):IRethinkDBDatum; overload;
     function withFields(const selectors:array of WideString):IRethinkDBDatum;
+    function concatMap(const fn:IRethinkDBTerm):IRethinkDBDatum; overload;
+    function skip(n:integer):IRethinkDBDatum;
+    function limit(n:integer):IRethinkDBDatum;
 
   end;
 
   IRethinkDBBool=interface(IRethinkDBDatum)
+    ['{863FDB51-4D60-4369-AC91-6AD20F363C0C}']
     function not_:IRethinkDBBool;
   end;
 
   IRethinkDB=interface(IRethinkDBTerm)
+    ['{D3D670F6-C882-4935-9E10-7714E4E903FB}']
     function table(const TableName:WideString;
       const Options:IJSONDocument=nil):IRethinkDBTable;
 
@@ -162,18 +172,33 @@ type
   IRethinkDBTableSlice=interface;//forward
 
   IRethinkDBSequence=interface(IRethinkDBTerm)
+    ['{A1CD9948-CE84-45DF-8EFA-3EA5DCF5D172}']
     function innerJoin(const otherSequence,predicate:IRethinkDBTerm):IRethinkDBSequence;
     function outerJoin(const otherSequence,predicate:IRethinkDBTerm):IRethinkDBSequence;
     function eqJoin(const leftFieldOrFunction,rightTable:IRethinkDBTerm;
       const Options:IJSONDocument=nil):IRethinkDBSequence;
+    function map(const fn:IRethinkDBTerm):IRethinkDBSequence; overload;
+    function map(const sequences:array of IRethinkDBSequence;const fn:IRethinkDBTerm):IRethinkDBStream; overload;
     function withFields(const selectors:array of WideString):IRethinkDBSequence;
+    function orderBy(const v:OleVariant):IRethinkDBDatum; overload;
+    function orderBy(const vv:array of OleVariant):IRethinkDBDatum; overload;
+    function skip(n:integer):IRethinkDBStream;
+    function limit(n:integer):IRethinkDBStream;
   end;
 
   IRethinkDBStream=interface(IRethinkDBSequence)
+    ['{542AEDF9-A9DE-42DA-81DA-B85E87903518}']
     function zip:IRethinkDBStream;
+    function concatMap(const fn:IRethinkDBTerm):IRethinkDBStream;
+  end;
+
+  IRethinkDBTableSlice=interface(IRethinkDBSequence)
+    ['{E7A1448D-3C62-42CB-A4A8-8DB333A31BC5}']
+    function between(const LowerKey,UpperKey:WideString;const Options:IJSONDocument=nil):IRethinkDBTableSlice;
   end;
 
   IRethinkDBTable=interface(IRethinkDBSequence)
+    ['{6A872B89-99D4-4102-8CAE-1F5D1831F15D}']
     //TODO: indexCreate
     function indexDrop(const IndexName:WideString):IRethinkDBTerm;
     function indexList:IRethinkDBTerm;
@@ -193,14 +218,15 @@ type
     function sync:IRethinkDBTerm;
 
     function get(const Key:WideString):IRethinkDBSingleRowSelection;
-    function getAll:IRethinkDBSelection; overload;
-    function getAll(const Keys:array of WideString;const Options:IJSONDocument=nil):IRethinkDBSelection; overload;
+    function getAll(const Keys:array of WideString;const Options:IJSONDocument=nil):IRethinkDBSelection;
 
     function between(const LowerKey,UpperKey:WideString;const Options:IJSONDocument=nil):IRethinkDBTableSlice;
-
+    function orderBy(const v:OleVariant):IRethinkDBTableSlice; overload;
+    function orderBy(const vv:array of OleVariant):IRethinkDBTableSlice; overload;
   end;
 
   IRethinkDBSelection=interface(IRethinkDBTerm)
+    ['{DED262BA-4C88-46CD-86C4-83F1E9E8AEAA}']
     function update(const doc:IJSONDocument;const Options:IJSONDocument=nil):IRethinkDBTerm; overload;
     //TODO: update(function)
     function replace(const doc:IJSONDocument;const Options:IJSONDocument=nil):IRethinkDBTerm; overload;
@@ -210,15 +236,17 @@ type
 
     function filter(const KeyValue:IJSONDocument;const Options:IJSONDocument=nil):IRethinkDBSElection; overload;
     function filter(const Predicate:IRethinkDBTerm;const Options:IJSONDocument=nil):IRethinkDBSElection; overload;
+
+    function orderBy(const v:OleVariant):IRethinkDBSelection; overload;
+    function orderBy(const vv:array of OleVariant):IRethinkDBSelection; overload;
   end;
 
   IRethinkDBSingleRowSelection=interface(IRethinkDBSelection)
+    ['{7D47E895-4DCC-4B5C-A956-3BCD777E3719}']
     //
   end;
 
-  IRethinkDBTableSlice=interface(IRethinkDBTerm)
-    function between(const LowerKey,UpperKey:WideString;const Options:IJSONDocument=nil):IRethinkDBTableSlice;
-  end;
+  //TODO: IRethinkDBBinary
 
   TRethinkDBTerm=class(TTHREADUNSAFEInterfacedObject,IRethinkDBTerm)//abstract
   private
@@ -232,9 +260,12 @@ type
     procedure Chain(Next:IRethinkDBTerm);
     function Next:IRethinkDBTerm;
     procedure Build(b:TRethinkDBBuilder); virtual; abstract;
+
   public
     constructor Create;
   end;
+
+  TRethinkDBValueClass=class of TRethinkDBValue;
 
   TRethinkDBValue=class(TRethinkDBTerm,IRethinkDBTerm)
   private
@@ -242,6 +273,7 @@ type
     FFirstArg:IRethinkDBTerm;
     FOptions:IJSONDocument;
     constructor Create; overload;//hide
+    function PrepOrderBy(rt:TRethinkDBValueClass;const vv:array of OleVariant):IRethinkDBTerm;
   protected
     procedure Build(b:TRethinkDBBuilder); override;
   public
@@ -287,9 +319,12 @@ type
     function innerJoin(const otherArray,predicate:IRethinkDBTerm):IRethinkDBDatum;
     function outerJoin(const otherArray,predicate:IRethinkDBTerm):IRethinkDBDatum;
     function zip:IRethinkDBDatum;
-    function map(const fn:IRethinkDBTerm):IRethinkDBStream; overload;
-    function map(const sequences:array of IRethinkDBTerm;const fn:IRethinkDBTerm):IRethinkDBStream; overload;
+    function map(const fn:IRethinkDBTerm):IRethinkDBDatum; overload;
+    function map(const arrays:array of IRethinkDBDatum;const fn:IRethinkDBTerm):IRethinkDBDatum; overload;
     function withFields(const selectors:array of WideString):IRethinkDBDatum;
+    function concatMap(const fn:IRethinkDBTerm):IRethinkDBDatum; overload;
+    function skip(n:integer):IRethinkDBDatum;
+    function limit(n:integer):IRethinkDBDatum;
   end;
 
   TRethinkDBBool=class(TRethinkDBDatum,IRethinkDBBool)
@@ -313,7 +348,13 @@ type
     function eqJoin(const leftFieldOrFunction,rightTable:IRethinkDBTerm;
       const Options:IJSONDocument=nil):IRethinkDBSequence;
     function zip:IRethinkDBSequence;
+    function map(const fn:IRethinkDBTerm):IRethinkDBSequence; overload;
+    function map(const sequences:array of IRethinkDBSequence;const fn:IRethinkDBTerm):IRethinkDBStream; overload;
     function withFields(const selectors:array of WideString):IRethinkDBSequence;
+    function orderBy(const v:OleVariant):IRethinkDBDatum; overload;
+    function orderBy(const vv:array of OleVariant):IRethinkDBDatum; overload;
+    function skip(n:integer):IRethinkDBStream;
+    function limit(n:integer):IRethinkDBStream;
   end;
 
   TRethinkDBTable=class(TRethinkDBSequence,IRethinkDBTable)
@@ -333,10 +374,11 @@ type
     function sync:IRethinkDBTerm;
 
     function get(const Key:WideString):IRethinkDBSingleRowSelection;
-    function getAll:IRethinkDBSelection; overload;
-    function getAll(const Keys:array of WideString;const Options:IJSONDocument=nil):IRethinkDBSelection; overload;
+    function getAll(const Keys:array of WideString;const Options:IJSONDocument=nil):IRethinkDBSelection;
 
     function between(const LowerKey,UpperKey:WideString;const Options:IJSONDocument=nil):IRethinkDBTableSlice;
+    function orderBy(const v:OleVariant):IRethinkDBTableSlice; overload;
+    function orderBy(const vv:array of OleVariant):IRethinkDBTableSlice; overload;
   end;
 
   TRethinkDBSelection=class(TRethinkDBValue,IRethinkDBSelection)
@@ -347,17 +389,21 @@ type
 
     function filter(const KeyValue:IJSONDocument;const Options:IJSONDocument=nil):IRethinkDBSElection; overload;
     function filter(const Predicate:IRethinkDBTerm;const Options:IJSONDocument=nil):IRethinkDBSElection; overload;
+
+    function orderBy(const v:OleVariant):IRethinkDBSelection; overload;
+    function orderBy(const vv:array of OleVariant):IRethinkDBSelection; overload;
   end;
 
   TRethinkDBSingleRowSelection=class(TRethinkDBSelection,IRethinkDBSingleRowSelection)
   end;
 
-  TRethinkDBTableSlice=class(TRethinkDBValue,IRethinkDBTableSlice)
+  TRethinkDBTableSlice=class(TRethinkDBSequence,IRethinkDBTableSlice)
     function between(const LowerKey,UpperKey:WideString;const Options:IJSONDocument=nil):IRethinkDBTableSlice;
   end;
 
   TRethinkDBStream=class(TRethinkDBSequence,IRethinkDBStream)
     function zip:IRethinkDBStream;
+    function concatMap(const fn:IRethinkDBTerm):IRethinkDBStream;
   end;
 
   TRethinkDBResultSet=class(TTHREADUNSAFEInterfacedObject,IRethinkDBResultSet)
@@ -587,12 +633,7 @@ begin
   Result:=TRethinkDBDatum.Create(TermType_HTTP,[x(URL)],Options);
 end;
 
-class function TRethinkDB.map(const sequence, fn: IRethinkDBTerm): IRethinkDBStream;
-begin
-  Result:=TRethinkDBStream.Create(TermType_MAP,[sequence,fn]);
-end;
-
-class function TRethinkDB.map(const sequences: array of IRethinkDBTerm;
+class function TRethinkDB.map(const sequences: array of IRethinkDBSequence;
   const fn: IRethinkDBTerm): IRethinkDBStream;
 var
   i,l:integer;
@@ -603,6 +644,29 @@ begin
   for i:=0 to l-1 do a[i]:=sequences[i];
   a[l]:=fn;
   Result:=TRethinkDBStream.Create(TermType_MAP,a);
+end;
+
+class function TRethinkDB.map(const arrays: array of IRethinkDBDatum;
+  const fn: IRethinkDBTerm): IRethinkDBDatum;
+var
+  i,l:integer;
+  a:array of IRethinkDBTerm;
+begin
+  l:=Length(arrays);
+  SetLength(a,l+1);
+  for i:=0 to l-1 do a[i]:=arrays[i];
+  a[l]:=fn;
+  Result:=TRethinkDBDatum.Create(TermType_MAP,a);
+end;
+
+class function TRethinkDB.asc(const FieldName: WideString): IRethinkDBTerm;
+begin
+  Result:=TRethinkDBValue.Create(TermType_ASC,x(FieldName));
+end;
+
+class function TRethinkDB.desc(const FieldName: WideString): IRethinkDBTerm;
+begin
+  Result:=TRethinkDBValue.Create(TermType_DESC,x(FieldName));
 end;
 
 { TRethinkDBTerm }
@@ -707,6 +771,54 @@ begin
    end;
   b(']');
 end;
+
+function TRethinkDBValue.PrepOrderBy(rt:TRethinkDBValueClass;
+  const vv:array of OleVariant):IRethinkDBTerm;
+var
+  i,j,l:integer;
+  a:array of IRethinkDBTerm;
+  u:IUnknown;
+  d,d1:IJSONDocument;
+  t:IRethinkDBTerm;
+begin
+  l:=Length(vv);
+  SetLength(a,l+1);
+  a[0]:=Self;
+  d1:=nil;
+  j:=1;
+  for i:=0 to l-1 do
+    case VarType(vv[i]) of
+      varUnknown:
+       begin
+        u:=IUnknown(vv[i]);
+        if u.QueryInterface(IJSONDocument,d)=S_OK then
+         begin
+          if d1<>nil then
+            raise ERethinkDBError.Create('orderBy allows only one {index:""} argument');
+          //TODO: check not(VarIsNull(d['index']))?
+          d1:=d;
+         end
+        else
+        if u.QueryInterface(IRethinkDBTerm,t)=S_OK then
+         begin
+          a[j]:=t;
+          inc(j);
+         end
+        else
+          raise ERethinkDBError.Create('Unsupported orderBy argument type at #'+IntToStr(i));
+       end;
+      varOleStr:
+       begin
+        a[j]:=TRethinkDB.x(VarToWideStr(vv[i]));
+        inc(j);
+       end;
+      else
+        raise ERethinkDBError.Create('Unsupported orderBy argument type at #'+IntToStr(i));
+    end;
+  SetLength(a,j);
+  Result:=rt.Create(TermType_ORDER_BY,a,d1);
+end;
+
 
 { r }
 
@@ -835,28 +947,43 @@ begin
   Result:=TRethinkDBDatum.Create(TermType_Zip,[Self]);
 end;
 
-function TRethinkDBDatum.map(const fn: IRethinkDBTerm): IRethinkDBStream;
+function TRethinkDBDatum.map(const fn: IRethinkDBTerm): IRethinkDBDatum;
 begin
-  Result:=TRethinkDBStream.Create(TermType_MAP,[Self,fn]);
+  Result:=TRethinkDBDatum.Create(TermType_MAP,[Self,fn]);
 end;
 
-function TRethinkDBDatum.map(const sequences: array of IRethinkDBTerm;
-  const fn: IRethinkDBTerm): IRethinkDBStream;
+function TRethinkDBDatum.map(const arrays: array of IRethinkDBDatum;
+  const fn: IRethinkDBTerm): IRethinkDBDatum;
 var
   i,l:integer;
   a:array of IRethinkDBTerm;
 begin
-  l:=Length(sequences);
+  l:=Length(arrays);
   SetLength(a,l+2);
   a[0]:=Self;
-  for i:=0 to l-1 do a[i+1]:=sequences[i];
+  for i:=0 to l-1 do a[i+1]:=arrays[i];
   a[l+1]:=fn;
-  Result:=TRethinkDBStream.Create(TermType_MAP,a);
+  Result:=TRethinkDBDatum.Create(TermType_MAP,a);
 end;
 
 function TRethinkDBDatum.withFields(const selectors: array of WideString): IRethinkDBDatum;
 begin
   Result:=TRethinkDBDatum.Create(TermType_WITH_FIELDS,r.xa(Self,selectors));
+end;
+
+function TRethinkDBDatum.concatMap(const fn: IRethinkDBTerm): IRethinkDBDatum;
+begin
+  Result:=TRethinkDBDatum.Create(TermType_CONCAT_MAP,[Self,fn]);
+end;
+
+function TRethinkDBDatum.skip(n: integer): IRethinkDBDatum;
+begin
+  Result:=TRethinkDBDatum.Create(TermType_SKIP,[Self,r.x(n)]);
+end;
+
+function TRethinkDBDatum.limit(n: integer): IRethinkDBDatum;
+begin
+  Result:=TRethinkDBDatum.Create(TermType_LIMIT,[Self,r.x(n)]);
 end;
 
 { TRethinkDBBool }
@@ -1205,11 +1332,6 @@ begin
   Result:=TRethinkDBSingleRowSelection.Create(TermType_GET,[Self,r.x(Key)]);
 end;
 
-function TRethinkDBTable.getAll:IRethinkDBSelection;
-begin
-  Result:=TRethinkDBSelection.Create(TermType_GET_ALL,[Self]);
-end;
-
 function TRethinkDBTable.getAll(const Keys:array of WideString;const Options:IJSONDocument=nil):IRethinkDBSelection;
 begin
   Result:=TRethinkDBSelection.Create(TermType_GET_ALL,r.xa(Self,Keys),Options);
@@ -1256,6 +1378,16 @@ function TRethinkDBTable.between(const LowerKey, UpperKey: WideString;
   const Options: IJSONDocument): IRethinkDBTableSlice;
 begin
   Result:=TRethinkDBTableSlice.Create(TermType_BETWEEN,[Self,r.x(LowerKey),r.x(UpperKey)],Options);
+end;
+
+function TRethinkDBTable.orderBy(const v: OleVariant): IRethinkDBTableSlice;
+begin
+  Result:=PrepOrderBy(TRethinkDBTableSlice,[v]) as IRethinkDBTableSlice;
+end;
+
+function TRethinkDBTable.orderBy(const vv: array of OleVariant): IRethinkDBTableSlice;
+begin
+  Result:=PrepORderBy(TRethinkDBTableSlice,vv) as IRethinkDBTableSlice;
 end;
 
 { TRethinkDBSelection }
@@ -1311,6 +1443,16 @@ begin
       TRethinkDBValue.Create(TermType_MAKE_ARRAY,r.x(1)),Predicate])],Options);
 end;
 
+function TRethinkDBSelection.orderBy(const v:OleVariant):IRethinkDBSelection;
+begin
+  Result:=PrepOrderBy(TRethinkDBSelection,[v]) as IRethinkDBSelection;
+end;
+
+function TRethinkDBSelection.orderBy(const vv:array of OleVariant):IRethinkDBSelection;
+begin
+  Result:=PrepOrderBy(TRethinkDBSelection,vv) as IRethinkDBSelection;
+end;
+
 { TRethinkDBTableSlice }
 
 function TRethinkDBTableSlice.between(const LowerKey, UpperKey: WideString;
@@ -1344,6 +1486,45 @@ begin
   Result:=TRethinkDBSequence.Create(TermType_ZIP,[Self]);
 end;
 
+function TRethinkDBSequence.map(const fn: IRethinkDBTerm): IRethinkDBSequence;
+begin
+  Result:=TRethinkDBStream.Create(TermType_MAP,[Self,fn]);
+end;
+
+function TRethinkDBSequence.map(const sequences: array of IRethinkDBSequence;
+  const fn: IRethinkDBTerm): IRethinkDBStream;
+var
+  i,l:integer;
+  a:array of IRethinkDBTerm;
+begin
+  l:=Length(sequences);
+  SetLength(a,l+2);
+  a[0]:=Self;
+  for i:=0 to l-1 do a[i+1]:=sequences[i];
+  a[l+1]:=fn;
+  Result:=TRethinkDBStream.Create(TermType_MAP,a);
+end;
+
+function TRethinkDBSequence.orderBy(const v: OleVariant): IRethinkDBDatum;
+begin
+  Result:=PrepOrderBy(TRethinkDBDatum,[v]) as IRethinkDBDatum;
+end;
+
+function TRethinkDBSequence.orderBy(const vv: array of OleVariant): IRethinkDBDatum;
+begin
+  Result:=PrepOrderBy(TRethinkDBDatum,vv) as IRethinkDBDatum;
+end;
+
+function TRethinkDBSequence.skip(n: integer): IRethinkDBStream;
+begin
+  Result:=TRethinkDBStream.Create(TermType_SKIP,[Self,r.x(n)]);
+end;
+
+function TRethinkDBSequence.limit(n: integer): IRethinkDBStream;
+begin
+  Result:=TRethinkDBStream.Create(TermType_LIMIT,[Self,r.x(n)]);
+end;
+
 { TRethinkDBStream }
 
 function TRethinkDBSequence.withFields(const selectors: array of WideString): IRethinkDBSequence;
@@ -1352,6 +1533,11 @@ begin
 end;
 
 { TRethinkDBStream }
+
+function TRethinkDBStream.concatMap(const fn: IRethinkDBTerm): IRethinkDBStream;
+begin
+  Result:=TRethinkDBStream.Create(TermType_CONCAT_MAP,[Self,fn]);
+end;
 
 function TRethinkDBStream.zip: IRethinkDBStream;
 begin
