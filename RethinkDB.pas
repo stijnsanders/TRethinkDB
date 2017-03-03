@@ -46,7 +46,8 @@ type
     class function dbList:IRethinkDBArray;
 
     class function row:IRethinkDBDatum; overload;
-    class function row(const RowName:WideString):IRethinkDBDatum; overload;
+    class function row(const FieldName:WideString):IRethinkDBDatum; overload;
+    //TODO: property field[const FieldName:WideString]:IRethinkDBDatum read row; default;
 
     class function map(const sequences:array of IRethinkDBSequence;const fn:IRethinkDBTerm):IRethinkDBStream; overload;
     class function map(const arrays:array of IRethinkDBArray;const fn:IRethinkDBTerm):IRethinkDBArray; overload;
@@ -152,7 +153,7 @@ type
     function ge(const v:OleVariant):IRethinkDBBool;
 
     //number
-    function and_(const v:OleVariant):IRethinkDBDatum;
+    function add_(const v:OleVariant):IRethinkDBDatum;
     function sub_(const v:OleVariant):IRethinkDBDatum;
     function mul_(const v:OleVariant):IRethinkDBDatum;
     function div_(const v:OleVariant):IRethinkDBDatum;
@@ -179,6 +180,8 @@ type
 
   IRethinkDBBool=interface(IRethinkDBDatum)
     ['{863FDB51-4D60-4369-AC91-6AD20F363C0C}']
+    function and_(const b:IRethinkDBBool):IRethinkDBBool;
+    function or_(const b:IRethinkDBBool):IRethinkDBBool;
     function not_:IRethinkDBBool;
   end;
 
@@ -413,7 +416,7 @@ type
     function gt(const v:OleVariant):IRethinkDBBool;
     function ge(const v:OleVariant):IRethinkDBBool;
 
-    function and_(const v:OleVariant):IRethinkDBDatum;
+    function add_(const v:OleVariant):IRethinkDBDatum;
     function sub_(const v:OleVariant):IRethinkDBDatum;
     function mul_(const v:OleVariant):IRethinkDBDatum;
     function div_(const v:OleVariant):IRethinkDBDatum;
@@ -464,6 +467,8 @@ type
   end;
 
   TRethinkDBBool=class(TRethinkDBDatum,IRethinkDBBool)
+    function and_(const b:IRethinkDBBool):IRethinkDBBool;
+    function or_(const b:IRethinkDBBool):IRethinkDBBool;
     function not_:IRethinkDBBool;
   end;
 
@@ -614,14 +619,12 @@ begin
 end;
 {$ENDIF}
 
-{ TRethinkDB }
-
-class function TRethinkDB.x(const s:WideString): IRethinkDBTerm;
+function StringEscape(const s:UTF8String): UTF8String;
 var
   s1,s2:UTF8String;
   i1,i2,l1,l2:integer;
 begin
-  //Result:=TRethinkDBConstant.Create('"'+StringReplace(s,'"','\"',[rfReplaceAll])+'"');
+  //Result:='"'+StringReplace(s,'"','\"',[rfReplaceAll])+'"';
   s1:=UTF8Encode(s);
   l1:=Length(s1);
   l2:=l1+2;
@@ -658,7 +661,24 @@ begin
   inc(i2);
   s2[i2]:='"';
   SetLength(s2,i2);
-  Result:=TRethinkDBConstant.Create(s2);
+  Result:=s2;
+end;
+
+type
+  TRethinkDBFuncBody=class(TRethinkDBTerm,IRethinkDBTerm)
+  private
+    FData:IJSONDocument;
+  protected
+    procedure Build(b:TRethinkDBBuilder); override;
+  public
+    constructor Create(const Data:IJSONDocument);
+  end;
+
+{ TRethinkDB }
+
+class function TRethinkDB.x(const s:WideString): IRethinkDBTerm;
+begin
+  Result:=TRethinkDBConstant.Create(StringEscape(s));
 end;
 
 class function TRethinkDB.x(b: boolean): IRethinkDBTerm;
@@ -743,9 +763,24 @@ begin
 end;
 
 class function TRethinkDB.x(d: IJSONDocument): IRethinkDBTerm;
+var
+  DoFunc:boolean;
+  e:IJSONEnumerator;
+  t:IRethinkDBTerm;
 begin
-  //Result:=TRethinkDBValue.Create(TermType_JSON,r.x(d.ToString));//?
-  Result:=TRethinkDBConstant.Create(UTF8Encode(d.ToString));
+  DoFunc:=false;//default
+  //ASSERT: either none or all values are IRethinkDBTerm, trigger on first
+  e:=JSONEnum(d);
+  if e.Next then
+    if VarType(e.Value)=varUnknown then
+      if IUnknown(e.Value).QueryInterface(IRethinkDBTerm,t)=S_OK then
+        DoFunc:=true;//TODO: check all?
+  if DoFunc then
+    Result:=TRethinkDBValue.Create(TermType_FUNC,[
+      TRethinkDBValue.Create(TermType_MAKE_ARRAY,x(1)),
+      TRethinkDBFuncBody.Create(d)])
+  else
+    Result:=TRethinkDBValue.Create(TermType_MAKE_OBJ,nil,d);
 end;
 
 class function TRethinkDB.db(const DBName: WideString;
@@ -788,9 +823,12 @@ begin
   Result:=TRethinkDBDatum.Create(TermType_IMPLICIT_VAR,nil);
 end;
 
-class function TRethinkDB.row(const RowName: WideString): IRethinkDBDatum;
+class function TRethinkDB.row(const FieldName: WideString): IRethinkDBDatum;
 begin
-  Result:=TRethinkDBDatum.Create(TermType_GET_FIELD,[row,x(RowName)]);
+  Result:=TRethinkDBDatum.Create(TermType_BRACKET,[
+    //TRethinkDBDatum.Create(TermType_IMPLICIT_VAR,nil),
+    TRethinkDBValue.Create(TermType_VAR,TRethinkDB.x(1)),
+    x(FieldName)]);
 end;
 
 class function TRethinkDB.http(const URL: WideString; const Options: IJSONDocument): IRethinkDBDatum;
@@ -1067,28 +1105,78 @@ end;
 
 procedure TRethinkDBValue.Build(b: TRethinkDBBuilder);
 var
-  v:IRethinkDBTerm;
+  e:IJSONEnumerator;
+  bb:boolean;
+  d:IJSONDocument;
+  t:IRethinkDBTerm;
 begin
   b('[');
   b(IntToStr(integer(FTermType)));
   if FFirstArg=nil then
-    //b(',[]')//?
+    //b(',[]')
   else
    begin
     b(',[');
-    v:=FFirstArg;
-    while v<>nil do
+    t:=FFirstArg;
+    while t<>nil do
      begin
-      v.Build(b);
-      v:=v.Next;
-      if v=nil then b(']') else b(',');
+      t.Build(b);
+      t:=t.Next;
+      if t=nil then b(']') else b(',');
      end;
    end;
   if FOptions<>nil then
    begin
-    //e:=JSONEnum(FOptions);//TODO
-    b(',');
-    b(FOptions.ToString);//BAD!!!
+    e:=JSONEnum(FOptions);
+    bb:=true;
+    b('{');
+    while e.Next do
+     begin
+      if bb then bb:=false else b(',');
+      b(StringEscape(UTF8Encode(e.Key)));
+      b(':');
+
+      //see also TRethinkDB.xx //TODO: merge common bits
+
+      case VarType(e.Value) of
+
+        varEmpty,varNull:b('null');
+        varSmallint,varInteger,varSingle,varDouble,varCurrency,
+        $000E,//varDecimal
+        varShortInt,varByte,varWord,varLongWord,varInt64,
+        $0015://varWord64
+          b(UTF8Encode(VarToWideStr(e.Value)));
+        //varDate://TODO
+        varOleStr:
+          b(StringEscape(UTF8Encode(VarToWideStr(e.Value))));
+
+        varDispatch,varUnknown:
+          if IUnknown(e.Value).QueryInterface(IJSONDocument,d)=S_OK then
+           begin
+            t:=TRethinkDBValue.Create(TermType_MAKE_OBJ,nil,d);
+            t.Build(b);
+           end
+          else
+          if IUnknown(e.Value).QueryInterface(IRethinkDBTerm,t)=S_OK then
+            t.Build(b)
+          else
+            raise ERethinkDBError.Create('Unsupported variant interface');
+
+        //varError:?
+        varBoolean:
+          if boolean(e.Value) then b('true') else b('false');
+        //varVariant:?
+
+        //varStrArg //?
+
+        //varTypeMask = $0FFF;
+        //varArray    = $2000;
+        //varByRef    = $4000;
+
+        else raise ERethinkDBError.Create('Unsupported variant type #'+IntToHex(VarType(e.Value),4));
+      end;
+     end;
+    b('}');
    end;
   b(']');
 end;
@@ -1109,7 +1197,7 @@ begin
   j:=1;
   for i:=0 to l-1 do
     case VarType(vv[i]) of
-      varUnknown:
+      varDispatch,varUnknown:
        begin
         u:=IUnknown(vv[i]);
         if u.QueryInterface(IJSONDocument,d)=S_OK then
@@ -1191,9 +1279,9 @@ begin
   Result:=TRethinkDBBool.Create(TermType_GE,[Self,r.xx(v)]);
 end;
 
-function TRethinkDBDatum.and_(const v: OleVariant): IRethinkDBDatum;
+function TRethinkDBDatum.add_(const v: OleVariant): IRethinkDBDatum;
 begin
-  Result:=TRethinkDBDatum.Create(TermType_AND,[Self,r.xx(v)]);
+  Result:=TRethinkDBDatum.Create(TermType_ADD,[Self,r.xx(v)]);
 end;
 
 function TRethinkDBDatum.sub_(const v: OleVariant): IRethinkDBDatum;
@@ -1233,7 +1321,7 @@ end;
 
 function TRethinkDBDatum.concat(const v: OleVariant): IRethinkDBDatum;
 begin
-  Result:=TRethinkDBBool.Create(TermType_AND,[Self,r.xx(v)]);//yes it's "AND", see ql2.proto
+  Result:=TRethinkDBBool.Create(TermType_ADD,[Self,r.xx(v)]);//yes it's "ADD", see ql2.proto
 end;
 
 function TRethinkDBDatum.append(const v: OleVariant): IRethinkDBDatum;
@@ -1435,9 +1523,50 @@ end;
 
 { TRethinkDBBool }
 
+function TRethinkDBBool.and_(const b:IRethinkDBBool):IRethinkDBBool;
+begin
+  Result:=TRethinkDBBool.Create(TermType_AND,[Self,b]);
+end;
+
+function TRethinkDBBool.or_(const b:IRethinkDBBool):IRethinkDBBool;
+begin
+  Result:=TRethinkDBBool.Create(TermType_OR,[Self,b]);
+end;
+
 function TRethinkDBBool.not_: IRethinkDBBool;
 begin
   Result:=TRethinkDBBool.Create(TermType_NOT,Self);
+end;
+
+{ TRethinkDBConstant }
+
+constructor TRethinkDBFuncBody.Create(const Data: IJSONDocument);
+begin
+  inherited Create;
+  FData:=Data;
+end;
+
+procedure TRethinkDBFuncBody.Build(b: TRethinkDBBuilder);
+var
+  e:IJSONEnumerator;
+  t:IRethinkDBTerm;
+  bb:boolean;
+begin
+  e:=JSONEnum(FData);
+  bb:=true;
+  b('{');
+  while e.Next do
+   begin
+    if bb then bb:=false else b(',');
+    b(StringEscape(UTF8Encode(e.Key)));
+    b(':');
+    if (VarType(e.Value)=varUnknown) and
+      (IUnknown(e.Value).QueryInterface(IRethinkDBTerm,t)=S_OK) then
+      t.Build(b)
+    else
+      raise ERethinkDBError.Create('Can''t mix terms and values in a document.');
+   end;
+  b('}');
 end;
 
 { TRethinkDBConnection }
