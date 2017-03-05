@@ -49,6 +49,11 @@ type
     class function row(const FieldName:WideString):IRethinkDBDatum; overload;
     //TODO: property field[const FieldName:WideString]:IRethinkDBDatum read row; default;
 
+    class function fn(const FnBody:IRethinkDBTerm;ArgCount:integer=1):IRethinkDBTerm; overload;
+    class function fn(const FnBody:IJSONDocument;ArgCount:integer=1):IRethinkDBTerm; overload;
+    class function arg(const ArgIndex:integer):IRethinkDBDatum; overload;
+    class function arg(const ArgIndex:integer;const FieldName:WideString):IRethinkDBDatum; overload;
+
     class function map(const sequences:array of IRethinkDBSequence;const fn:IRethinkDBTerm):IRethinkDBStream; overload;
     class function map(const arrays:array of IRethinkDBArray;const fn:IRethinkDBTerm):IRethinkDBArray; overload;
     class function union(const stream:IRethinkDBStream;
@@ -295,9 +300,9 @@ type
   IRethinkDBSelection=interface(IRethinkDBStream)
     ['{DED262BA-4C88-46CD-86C4-83F1E9E8AEAA}']
     function update(const doc:IJSONDocument;const Options:IJSONDocument=nil):IRethinkDBObject; overload;
-    //TODO: update(function)
+    function update(const fn:IRethinkDBTerm;const Options:IJSONDocument=nil):IRethinkDBObject; overload;
     function replace(const doc:IJSONDocument;const Options:IJSONDocument=nil):IRethinkDBObject; overload;
-    //TODO: replace(function)
+    function replace(const fn:IRethinkDBTerm;const Options:IJSONDocument=nil):IRethinkDBObject; overload;
     function delete(const Options:IJSONDocument=nil):IRethinkDBObject;
     function sync:IRethinkDBObject;
 
@@ -316,9 +321,9 @@ type
   IRethinkDBSingleSelection=interface(IRethinkDBObject)
     ['{7D47E895-4DCC-4B5C-A956-3BCD777E3719}']
     function update(const doc:IJSONDocument;const Options:IJSONDocument=nil):IRethinkDBObject; overload;
-    //TODO: update(function)
+    function update(const fn:IRethinkDBTerm;const Options:IJSONDocument=nil):IRethinkDBObject; overload;
     function replace(const doc:IJSONDocument;const Options:IJSONDocument=nil):IRethinkDBObject; overload;
-    //TODO: replace(function)
+    function replace(const fn:IRethinkDBTerm;const Options:IJSONDocument=nil):IRethinkDBObject; overload;
     function delete(const Options:IJSONDocument=nil):IRethinkDBObject;
   end;
 
@@ -459,9 +464,9 @@ type
 
     //IRethinkDBSingleSelection
     function update(const doc:IJSONDocument;const Options:IJSONDocument=nil):IRethinkDBObject; overload;
-    //TODO: update(function)
+    function update(const fn:IRethinkDBTerm;const Options:IJSONDocument=nil):IRethinkDBObject; overload;
     function replace(const doc:IJSONDocument;const Options:IJSONDocument=nil):IRethinkDBObject; overload;
-    //TODO: replace(function)
+    function replace(const fn:IRethinkDBTerm;const Options:IJSONDocument=nil):IRethinkDBObject; overload;
     function delete(const Options:IJSONDocument=nil):IRethinkDBObject;
 
   end;
@@ -538,7 +543,9 @@ type
 
     //IRethinkDBSelection
     function update(const doc:IJSONDocument;const Options:IJSONDocument=nil):IRethinkDBObject; overload;
+    function update(const fn:IRethinkDBTerm;const Options:IJSONDocument=nil):IRethinkDBObject; overload;
     function replace(const doc:IJSONDocument;const Options:IJSONDocument=nil):IRethinkDBObject; overload;
+    function replace(const fn:IRethinkDBTerm;const Options:IJSONDocument=nil):IRethinkDBObject; overload;
     function delete(const Options:IJSONDocument=nil):IRethinkDBObject;
     function sync:IRethinkDBObject;
     function filter_x(const KeyValue:IJSONDocument;const Options:IJSONDocument=nil):IRethinkDBSelection; overload;
@@ -818,6 +825,12 @@ begin
     Result:=TRethinkDBDatum.Create(TermType_UUID,x(Input));
 end;
 
+class function TRethinkDB.http(const URL: WideString; const Options: IJSONDocument): IRethinkDBDatum;
+begin
+  Result:=TRethinkDBDatum.Create(TermType_HTTP,[x(URL)],Options);
+end;
+
+
 class function TRethinkDB.row: IRethinkDBDatum;
 begin
   Result:=TRethinkDBDatum.Create(TermType_IMPLICIT_VAR,nil);
@@ -831,11 +844,44 @@ begin
     x(FieldName)]);
 end;
 
-class function TRethinkDB.http(const URL: WideString; const Options: IJSONDocument): IRethinkDBDatum;
+class function TRethinkDB.fn(const FnBody:IRethinkDBTerm;
+  ArgCount:integer=1):IRethinkDBTerm;
+var
+  xx:array of IRethinkDBTerm;
+  i:integer;
 begin
-  Result:=TRethinkDBDatum.Create(TermType_HTTP,[x(URL)],Options);
+  SetLength(xx,ArgCount);
+  for i:=0 to ArgCount-1 do xx[i]:=x(i+1);
+  Result:=TRethinkDBValue.Create(TermType_FUNC,[
+      TRethinkDBValue.Create(TermType_MAKE_ARRAY,xx),
+      FnBody]);
 end;
 
+class function TRethinkDB.fn(const FnBody:IJSONDocument;
+  ArgCount:integer=1):IRethinkDBTerm;
+var
+  xx:array of IRethinkDBTerm;
+  i:integer;
+begin
+  SetLength(xx,ArgCount);
+  for i:=0 to ArgCount-1 do xx[i]:=x(i+1);
+  Result:=TRethinkDBValue.Create(TermType_FUNC,[
+      TRethinkDBValue.Create(TermType_MAKE_ARRAY,xx),
+      TRethinkDBFuncBody.Create(FnBody)]);
+end;
+
+class function TRethinkDB.arg(const ArgIndex:integer):IRethinkDBDatum;
+begin
+  Result:=TRethinkDBDatum.Create(TermType_VAR,TRethinkDB.x(ArgIndex));
+end;
+
+class function TRethinkDB.arg(const ArgIndex:integer;
+  const FieldName:WideString):IRethinkDBDatum;
+begin
+  Result:=TRethinkDBDatum.Create(TermType_BRACKET,[
+    TRethinkDBValue.Create(TermType_VAR,TRethinkDB.x(ArgIndex)),
+    x(FieldName)]);
+end;
 
 class function TRethinkDB.map(const sequences:array of IRethinkDBSequence;
   const fn:IRethinkDBTerm):IRethinkDBStream;
@@ -1113,7 +1159,9 @@ begin
   b('[');
   b(IntToStr(integer(FTermType)));
   if FFirstArg=nil then
-    //b(',[]')
+   begin
+    if FOptions<>nil then b(',[]');
+   end
   else
    begin
     b(',[');
@@ -1129,7 +1177,7 @@ begin
    begin
     e:=JSONEnum(FOptions);
     bb:=true;
-    b('{');
+    b(',{');
     while e.Next do
      begin
       if bb then bb:=false else b(',');
@@ -1511,9 +1559,25 @@ begin
   Result:=TRethinkDBDatum.Create(TermType_UPDATE,[Self,r.x(doc)],Options);
 end;
 
+function TRethinkDBDatum.update(const fn:IRethinkDBTerm;const Options:IJSONDocument=nil):IRethinkDBObject;
+begin
+  Result:=TRethinkDBDatum.Create(TermType_UPDATE,[Self,
+    TRethinkDBValue.Create(TermType_FUNC,[
+      TRethinkDBValue.Create(TermType_MAKE_ARRAY,r.x(1)),fn])
+    ],Options);
+end;
+
 function TRethinkDBDatum.replace(const doc:IJSONDocument;const Options:IJSONDocument=nil):IRethinkDBObject;
 begin
   Result:=TRethinkDBDatum.Create(TermType_REPLACE,[Self,r.x(doc)],Options);
+end;
+
+function TRethinkDBDatum.replace(const fn:IRethinkDBTerm;const Options:IJSONDocument=nil):IRethinkDBObject;
+begin
+  Result:=TRethinkDBDatum.Create(TermType_UPDATE,[Self,
+    TRethinkDBValue.Create(TermType_FUNC,[
+      TRethinkDBValue.Create(TermType_MAKE_ARRAY,r.x(1)),fn])
+    ],Options);
 end;
 
 function TRethinkDBDatum.delete(const Options:IJSONDocument=nil):IRethinkDBObject;
@@ -2132,9 +2196,25 @@ begin
   Result:=TRethinkDBDatum.Create(TermType_UPDATE,[Self,r.x(doc)],Options);
 end;
 
+function TRethinkDBSet.update(const fn:IRethinkDBTerm;const Options:IJSONDocument=nil):IRethinkDBObject;
+begin
+  Result:=TRethinkDBDatum.Create(TermType_UPDATE,[Self,
+    TRethinkDBValue.Create(TermType_FUNC,[
+      TRethinkDBValue.Create(TermType_MAKE_ARRAY,r.x(1)),fn])
+    ],Options);
+end;
+
 function TRethinkDBSet.replace(const doc:IJSONDocument;const Options:IJSONDocument=nil):IRethinkDBObject;
 begin
   Result:=TRethinkDBDatum.Create(TermType_REPLACE,[Self,r.x(doc)],Options);
+end;
+
+function TRethinkDBSet.replace(const fn:IRethinkDBTerm;const Options:IJSONDocument=nil):IRethinkDBObject;
+begin
+  Result:=TRethinkDBDatum.Create(TermType_UPDATE,[Self,
+    TRethinkDBValue.Create(TermType_FUNC,[
+      TRethinkDBValue.Create(TermType_MAKE_ARRAY,r.x(1)),fn])
+    ],Options);
 end;
 
 function TRethinkDBSet.delete(const Options:IJSONDocument=nil):IRethinkDBObject;
