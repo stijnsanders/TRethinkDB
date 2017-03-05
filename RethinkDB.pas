@@ -25,7 +25,7 @@ type
   //
   //r=TRethinkDB;
 
-  TRetinkDBTerms=array of IRethinkDBTerm;
+  TRethinkDBTerms=array of IRethinkDBTerm;
 
   TRethinkDB=class(TObject)
   protected
@@ -33,7 +33,8 @@ type
     class function x(b:boolean):IRethinkDBTerm; overload;
     class function x(v:integer):IRethinkDBTerm; overload;
     class function x(d:IJSONDocument):IRethinkDBTerm; overload;
-    class function xa(const p:IRethinkDBTerm;const a:array of WideString):TRetinkDBTerms;
+    class function xa(const p:IRethinkDBTerm;const a:array of WideString):TRethinkDBTerms;
+    class function xo(const p:IRethinkDBTerm;const a:array of OleVariant):TRethinkDBTerms;
     class function xx(const v:OleVariant):IRethinkDBTerm;
   public
     class function db(const DBName:WideString;
@@ -208,7 +209,7 @@ type
     function zip:IRethinkDBArray;
     function map(const fn:IRethinkDBTerm):IRethinkDBArray; overload;
     function map(const arrays:array of IRethinkDBArray;const fn:IRethinkDBTerm):IRethinkDBArray; overload;
-    function withFields(const selectors:array of WideString):IRethinkDBArray;
+    function withFields(const selectors:array of OleVariant):IRethinkDBArray;
     function concatMap(const fn:IRethinkDBTerm):IRethinkDBArray; overload;
     function skip(n:integer):IRethinkDBArray;
     function limit(n:integer):IRethinkDBArray;
@@ -220,14 +221,18 @@ type
     function union_a(const sequences:array of IRethinkDBSequence):IRethinkDBArray;
     function union_a3(const sequences:array of IRethinkDBSequence;const interleave:OleVariant):IRethinkDBArray;
     function sample_a(n:integer):IRethinkDBArray;
+    function without_a(const PathSpec:array of OleVariant):IRethinkDBArray;
 
     function count:IRethinkDBDatum;
-
   end;
 
   IRethinkDBObject=interface(IRethinkDBDatum)
     ['{025863D6-4BF0-4FB8-8E4D-F6A34FF022D9}']
+    function field(const FieldName:WideString):IRethinkDBDatum;
     function count:IRethinkDBDatum;
+    function hasFields_o(const PathSpec:array of OleVariant):IRethinkDBBool;
+    function pluck_o(const PathSpec:array of OleVariant):IRethinkDBObject;
+    function without_o(const PathSpec:array of OleVariant):IRethinkDBObject;
   end;
 
   IRethinkDBDatabase=interface(IRethinkDBTerm)
@@ -251,7 +256,6 @@ type
       const Options:IJSONDocument=nil):IRethinkDBSequence;
     function map(const fn:IRethinkDBTerm):IRethinkDBStream; overload;
     function map(const sequences:array of IRethinkDBSequence;const fn:IRethinkDBTerm):IRethinkDBStream; overload;
-    function withFields(const selectors:array of WideString):IRethinkDBStream;
     //NOTICE: I've tried overload, but interface aliases can't handle overloads
     function orderBy_s1(const v:OleVariant):IRethinkDBArray;
     function orderBy_s(const vv:array of OleVariant):IRethinkDBArray;
@@ -277,6 +281,9 @@ type
     function max(const func:IRethinkDBTerm):IRethinkDBDatum; overload;
     function max_index(const indexName:WideString):IRethinkDBDatum; overload;
     function distinct_s:IRethinkDBArray;
+    function hasFields_s(const PathSpec:array of OleVariant):IRethinkDBBool;
+    function pluck_s(const PathSpec:array of OleVariant):IRethinkDBStream;
+    function without_s(const PathSpec:array of OleVariant):IRethinkDBStream;
   end;
 
   IRethinkDBStream=interface(IRethinkDBSequence)
@@ -312,8 +319,8 @@ type
     function orderBy_x1(const v:OleVariant):IRethinkDBSelection{<IRethinkDBArray>};
     function orderBy_x(const vv:array of OleVariant):IRethinkDBSelection{<IRethinkDBArray>};
 
-    function slice_x1(startOffset:cardinal;leftBoundOpen:boolean=false):IRethinkDBSelection;
-    function slice_x(startOffset,endOffset:cardinal;leftBoundOpen:boolean=false;
+    function slice_s1(startOffset:cardinal;leftBoundOpen:boolean=false):IRethinkDBSelection;
+    function slice_s(startOffset,endOffset:cardinal;leftBoundOpen:boolean=false;
       rightBoundOpen:boolean=true):IRethinkDBSelection;
     function nth_x(n:integer):IRethinkDBSelection{<IRethinkDBObject>};
   end;
@@ -408,7 +415,7 @@ type
     constructor Create(const Literal:UTF8String);
   end;
 
-//https://rethinkdb.com/api/javascript/row/
+//https://rethinkdb.com/api/javascript/merge/
 
   TRethinkDBDatum=class(TRethinkDBValue,IRethinkDBDatum,IRethinkDBArray,
     IRethinkDBObject,IRethinkDBSingleSelection)
@@ -449,7 +456,7 @@ type
     function zip:IRethinkDBArray;
     function map(const fn:IRethinkDBTerm):IRethinkDBArray; overload;
     function map(const arrays:array of IRethinkDBArray;const fn:IRethinkDBTerm):IRethinkDBArray; overload;
-    function withFields(const selectors:array of WideString):IRethinkDBArray;
+    function withFields(const selectors:array of OleVariant):IRethinkDBArray;
     function concatMap(const fn:IRethinkDBTerm):IRethinkDBArray; overload;
     function skip(n:integer):IRethinkDBArray;
     function limit(n:integer):IRethinkDBArray;
@@ -461,6 +468,13 @@ type
     function union_a(const sequences:array of IRethinkDBSequence):IRethinkDBArray;
     function union_a3(const sequences:array of IRethinkDBSequence;const interleave:OleVariant):IRethinkDBArray;
     function sample_a(n:integer):IRethinkDBArray;
+    function without_a(const PathSpec:array of OleVariant):IRethinkDBArray;
+
+    //IRethinkDBObject
+    function field(const FieldName:WideString):IRethinkDBDatum;
+    function hasFields_o(const PathSpec:array of OleVariant):IRethinkDBBool;
+    function pluck_o(const PathSpec:array of OleVariant):IRethinkDBObject;
+    function without_o(const PathSpec:array of OleVariant):IRethinkDBObject;
 
     //IRethinkDBSingleSelection
     function update(const doc:IJSONDocument;const Options:IJSONDocument=nil):IRethinkDBObject; overload;
@@ -499,7 +513,7 @@ type
       const Options:IJSONDocument=nil):IRethinkDBSequence;
     function map(const fn:IRethinkDBTerm):IRethinkDBStream; overload;
     function map(const sequences:array of IRethinkDBSequence;const fn:IRethinkDBTerm):IRethinkDBStream; overload;
-    function withFields(const selectors:array of WideString):IRethinkDBStream;
+    function withFields(const selectors:array of OleVariant):IRethinkDBStream;
     function orderBy_s1(const v:OleVariant):IRethinkDBArray;
     function orderBy_s(const vv:array of OleVariant):IRethinkDBArray;
     function skip(n:integer):IRethinkDBStream;
@@ -524,6 +538,9 @@ type
     function max(const func:IRethinkDBTerm):IRethinkDBDatum; overload;
     function max_index(const indexName:WideString):IRethinkDBDatum; overload;
     function distinct_s:IRethinkDBArray;
+    function hasFields_s(const PathSpec:array of OleVariant):IRethinkDBBool;
+    function pluck_s(const PathSpec:array of OleVariant):IRethinkDBStream;
+    function without_s(const PathSpec:array of OleVariant):IRethinkDBStream;
 
     //IRethinkDBStream
     function changes(const Options:IJSONDocument=nil):IRethinkDBStream;
@@ -552,8 +569,8 @@ type
     function filter_x(const Predicate:IRethinkDBTerm;const Options:IJSONDocument=nil):IRethinkDBSelection; overload;
     function orderBy_x1(const v:OleVariant):IRethinkDBSelection{<IRethinkDBArray>};
     function orderBy_x(const vv:array of OleVariant):IRethinkDBSelection{<IRethinkDBArray>};
-    function slice_x1(startOffset:cardinal;leftBoundOpen:boolean=false):IRethinkDBSelection;
-    function slice_x(startOffset,endOffset:cardinal;leftBoundOpen:boolean=false;
+    function slice_s1(startOffset:cardinal;leftBoundOpen:boolean=false):IRethinkDBSelection;
+    function slice_s(startOffset,endOffset:cardinal;leftBoundOpen:boolean=false;
       rightBoundOpen:boolean=true):IRethinkDBSelection;
     function nth_x(n:integer):IRethinkDBSelection{<IRethinkDBObject>};
 
@@ -706,6 +723,7 @@ var
   vt:TVarType;
   i,j,k:integer;
   a:array of IRethinkDBTerm;
+  d:IJSONDocument;
 begin
   vt:=VarType(v);
   if (vt and varArray)=0 then
@@ -720,10 +738,14 @@ begin
       //varDate://TODO
       varOleStr:
         Result:=x(VarToWideStr(v));
-      //varDispatch,varUnknown://TODO
-        //IRethinkDBTerm...
-        //IJSONDocument...
-      //varError:?
+
+      varDispatch,varUnknown:
+        if IUnknown(v).QueryInterface(IJSONDocument,d)=S_OK then
+          Result:=TRethinkDBValue.Create(TermType_MAKE_OBJ,nil,d)
+        else
+          raise ERethinkDBError.Create('Unsupported variant interface');
+
+      //varError:?
       varBoolean:
         Result:=x(boolean(v));
       //varVariant:?
@@ -754,7 +776,7 @@ begin
 end;
 
 class function TRethinkDB.xa(const p: IRethinkDBTerm;
-  const a: array of WideString): TRetinkDBTerms;
+  const a: array of WideString): TRethinkDBTerms;
 var
   i,l:integer;
 begin
@@ -765,6 +787,22 @@ begin
   while i<>l do
    begin
     Result[i+1]:=x(a[i]);
+    inc(i);
+   end;
+end;
+
+class function TRethinkDB.xo(const p: IRethinkDBTerm;
+  const a: array of OleVariant): TRethinkDBTerms;
+var
+  i,l:integer;
+begin
+  l:=Length(a);
+  SetLength(Result,l+1);
+  Result[0]:=p;
+  i:=0;
+  while i<>l do
+   begin
+    Result[i+1]:=xx(a[i]);
     inc(i);
    end;
 end;
@@ -1423,9 +1461,9 @@ begin
   Result:=TRethinkDBDatum.Create(TermType_MAP,a) as IRethinkDBArray;
 end;
 
-function TRethinkDBDatum.withFields(const selectors: array of WideString): IRethinkDBArray;
+function TRethinkDBDatum.withFields(const selectors: array of OleVariant): IRethinkDBArray;
 begin
-  Result:=TRethinkDBDatum.Create(TermType_WITH_FIELDS,r.xa(Self,selectors)) as IRethinkDBArray;
+  Result:=TRethinkDBDatum.Create(TermType_WITH_FIELDS,r.xo(Self,selectors)) as IRethinkDBArray;
 end;
 
 function TRethinkDBDatum.concatMap(const fn: IRethinkDBTerm): IRethinkDBArray;
@@ -1441,6 +1479,11 @@ end;
 function TRethinkDBDatum.limit(n: integer): IRethinkDBArray;
 begin
   Result:=TRethinkDBDatum.Create(TermType_LIMIT,[Self,r.x(n)]);
+end;
+
+function TRethinkDBDatum.field(const FieldName:WideString): IRethinkDBDatum;
+begin
+  Result:=TRethinkDBDatum.Create(TermType_BRACKET,[Self,r.x(FieldName)]);
 end;
 
 function TRethinkDBDatum.count: IRethinkDBDatum;
@@ -1552,6 +1595,26 @@ end;
 function TRethinkDBDatum.sample_a(n:integer):IRethinkDBArray;
 begin
   Result:=TRethinkDBDatum.Create(TermType_SAMPLE,[Self,r.x(n)]);
+end;
+
+function TRethinkDBDatum.without_a(const PathSpec:array of OleVariant):IRethinkDBArray;
+begin
+  Result:=TRethinkDBDatum.Create(TermType_WITHOUT,r.xo(Self,PathSpec));
+end;
+
+function TRethinkDBDatum.hasFields_o(const PathSpec:array of OleVariant):IRethinkDBBool;
+begin
+  Result:=TRethinkDBBool.Create(TermType_HAS_FIELDS,r.xo(Self,PathSpec));
+end;
+
+function TRethinkDBDatum.pluck_o(const PathSpec:array of OleVariant):IRethinkDBObject;
+begin
+  Result:=TRethinkDBDatum.Create(TermType_PLUCK,r.xo(Self,PathSpec));
+end;
+
+function TRethinkDBDatum.without_o(const PathSpec:array of OleVariant):IRethinkDBObject;
+begin
+  Result:=TRethinkDBDatum.Create(TermType_WITHOUT,r.xo(Self,PathSpec));
 end;
 
 function TRethinkDBDatum.update(const doc:IJSONDocument;const Options:IJSONDocument=nil):IRethinkDBObject;
@@ -1964,9 +2027,9 @@ begin
   Result:=TRethinkDBSet.Create(TermType_MAP,a);
 end;
 
-function TRethinkDBSet.withFields(const selectors:array of WideString):IRethinkDBStream;
+function TRethinkDBSet.withFields(const selectors:array of OleVariant):IRethinkDBStream;
 begin
-  Result:=TRethinkDBSet.Create(TermType_WITH_FIELDS,r.xa(Self,selectors));
+  Result:=TRethinkDBSet.Create(TermType_WITH_FIELDS,r.xo(Self,selectors));
 end;
 
 function TRethinkDBSet.orderBy_s1(const v:OleVariant):IRethinkDBArray;
@@ -2088,6 +2151,21 @@ end;
 function TRethinkDBSet.distinct_s:IRethinkDBArray;
 begin
   Result:=TRethinkDBDatum.Create(TermType_DISTINCT,[Self]);
+end;
+
+function TRethinkDBSet.hasFields_s(const PathSpec:array of OleVariant):IRethinkDBBool;
+begin
+  Result:=TRethinkDBBool.Create(TermType_HAS_FIELDS,r.xo(Self,PathSpec));
+end;
+
+function TRethinkDBSet.pluck_s(const PathSpec:array of OleVariant):IRethinkDBStream;
+begin
+  Result:=TRethinkDBSet.Create(TermType_PLUCK,r.xo(Self,PathSpec));
+end;
+
+function TRethinkDBSet.without_s(const PathSpec:array of OleVariant):IRethinkDBStream;
+begin
+  Result:=TRethinkDBSet.Create(TermType_WITHOUT,r.xo(Self,PathSpec));
 end;
 
 function TRethinkDBSet.changes(const Options:IJSONDocument=nil):IRethinkDBStream;
@@ -2242,6 +2320,7 @@ begin
         ,r.x(e.Key)])
       ,r.xx(e.Value)]);
     //TODO: if e.Value is IJSONDocument...
+    //TODO: if e.Value is IRethinkDBTerm...
     if a=nil then a:=b else a:=TRethinkDBValue.Create(TermType_AND,[a,b]);
    end;
   if a=nil then a:=r.x(true);
@@ -2267,7 +2346,7 @@ begin
   Result:=PrepOrderBy(TRethinkDBSet,vv) as IRethinkDBSelection;
 end;
 
-function TRethinkDBSet.slice_x1(startOffset:cardinal;leftBoundOpen:boolean=false):IRethinkDBSelection;
+function TRethinkDBSet.slice_s1(startOffset:cardinal;leftBoundOpen:boolean=false):IRethinkDBSelection;
 var
   d:IJSONDocument;
 begin
@@ -2275,7 +2354,7 @@ begin
   Result:=TRethinkDBSet.Create(TermType_SLICE,[Self,r.x(startOffset)],d);
 end;
 
-function TRethinkDBSet.slice_x(startOffset,endOffset:cardinal;leftBoundOpen:boolean=false;
+function TRethinkDBSet.slice_s(startOffset,endOffset:cardinal;leftBoundOpen:boolean=false;
   rightBoundOpen:boolean=true):IRethinkDBSelection;
 var
   d:IJSONDocument;
