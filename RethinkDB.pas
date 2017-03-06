@@ -103,6 +103,24 @@ type
       const timeZone: WideString):IRethinkDBDatum; overload;
     class function epochTime(e: int64):IRethinkDBDatum;
     class function iso8601(const d:WideString;const defaultTimeZone:WideString=''):IRethinkDBDatum;
+
+    //TODO: args
+    //TODO: binary
+    //TODO: expr (currently xx?)
+
+    class function do_(const fn:IRethinkDBTerm):IRethinkDBTerm; overload;
+    class function do_(const fn:IRethinkDBTerm; const args:array of OleVariant):IRethinkDBTerm; overload;
+    class function branch(const test:IRethinkDBBool; const trueAction, falseAction:IRethinkDBTerm):IRethinkDBTerm;
+    class function error(const Msg:WideString): IRethinkDBTerm;
+    class function info(const x:IRethinkDBTerm): IRethinkDBObject;
+
+    class function js(const jsCode:WideString):IRethinkDBDatum; overload;
+    class function js(const jsCode:WideString;timeoutSeconds:double):IRethinkDBDatum; overload;
+    class function json(const jsonCode:WideString):IRethinkDBDatum;
+
+    class function range: IRethinkDBStream; overload;
+    class function range(endValue:integer): IRethinkDBStream; overload;
+    class function range(startValue,endValue:integer): IRethinkDBStream; overload;
   end;
 
   {$IFDEF DEBUG}
@@ -153,12 +171,16 @@ type
       const Options:IJSONDocument=nil):IJSONDocument;
     function Run(Connection:TRethinkDBConnection;
       const Options:IJSONDocument=nil):IRethinkDBResultSet;
-    //TODO: changes
 
-    //all IRethinkDBTerm single use! //TODO: replace with central chaining
+    //assert: all IRethinkDBTerm single use! //TODO: replace with central chaining
     procedure Chain(Next:IRethinkDBTerm);
     function Next:IRethinkDBTerm;
     procedure Build(b:TRethinkDBBuilder);
+
+    function do_(const fn:IRethinkDBTerm):IRethinkDBTerm; overload;
+    function do_(const fn:IRethinkDBTerm; const args:array of OleVariant):IRethinkDBTerm; overload;
+    function typeOf:IRethinkDBDatum;
+    function info:IRethinkDBObject;
   end;
 
   IRethinkDBDatum=interface(IRethinkDBTerm)
@@ -169,6 +191,9 @@ type
     function le(const v:OleVariant):IRethinkDBBool;
     function gt(const v:OleVariant):IRethinkDBBool;
     function ge(const v:OleVariant):IRethinkDBBool;
+
+    function coerceToString:IRethinkDBDatum;
+    function toJSON:IRethinkDBDatum;
 
     //number
     function add_(const v:OleVariant):IRethinkDBDatum;
@@ -192,6 +217,7 @@ type
     function split(const Separator:WideString;MaxSplits:integer):IRethinkDBArray; overload;
     function upcase: IRethinkDBDatum;
     function downcase: IRethinkDBDatum;
+    //TODO: coerceToBinary
 
     //array see IRethinkDBArray
 
@@ -217,6 +243,8 @@ type
     function toIso8601:IRethinkDBDatum;
     function toEpochTime:IRethinkDBDatum;
 
+    function default(const Value:OleVariant):IRethinkDBDatum; overload;
+    function default(const fn:IRethinkDBTerm):IRethinkDBDatum; overload;
   end;
 
   IRethinkDBBool=interface(IRethinkDBDatum)
@@ -224,13 +252,14 @@ type
     function and_(const b:IRethinkDBBool):IRethinkDBBool;
     function or_(const b:IRethinkDBBool):IRethinkDBBool;
     function not_:IRethinkDBBool;
+    function branch(const trueAction, falseAction:IRethinkDBTerm):IRethinkDBTerm;
   end;
 
   IRethinkDBArray=interface(IRethinkDBTerm)//*:
     //actually both IRethinkDBDatum and IRethinkDBSequence,
     //but interfaces don't do multiple inheritance
     //so reverted to first common parent IRethinkDBTerm
-    //(single TRethinkDBTerm does implementation anyway)
+    //(single TRethinkDBDatum does implementation anyway)
     ['{18DF4808-F0DE-40BB-86A5-C967FE43CB9A}']
 
     function filter_a(const KeyValue:IJSONDocument;const Options:IJSONDocument=nil):IRethinkDBArray; overload;
@@ -260,6 +289,7 @@ type
     function merge_a(const x:array of IRethinkDBObject):IRethinkDBArray;
 
     function count:IRethinkDBDatum;
+    function coerceToObject:IRethinkDBObject;
 
     function setInsert(const Value:OleVariant):IRethinkDBArray;
     function setIntersection(const x:IRethinkDBArray):IRethinkDBArray;
@@ -286,6 +316,7 @@ type
     function without_o(const PathSpec:array of OleVariant):IRethinkDBObject;
     function merge_o(const x:array of IRethinkDBObject):IRethinkDBObject;
     function getField_o(const FieldName:WideString):IRethinkDBDatum;
+    function coerceToArray:IRethinkDBArray;
 
     property field[const FieldName:WideString]:IRethinkDBDatum read field_o; default;
   end;
@@ -342,6 +373,11 @@ type
     function merge_s(const x:array of IRethinkDBObject):IRethinkDBStream;
     function field_s(const FieldName:WideString):IRethinkDBSequence;
     function getField_s(const FieldName:WideString):IRethinkDBSequence;
+    function forEach(const fn:IRethinkDBTerm):IRethinkDBTerm;
+    function default(const Value:OleVariant):IRethinkDBDatum; overload;
+    function default(const fn:IRethinkDBTerm):IRethinkDBDatum; overload;
+    function coerceToArray:IRethinkDBArray;
+    function coerceToObject:IRethinkDBObject;
 
     property field[const FieldName:WideString]:IRethinkDBSequence read field_s; default;
   end;
@@ -425,7 +461,7 @@ type
   end;
 
   //TODO: IRethinkDBBinary
-  //slice,count
+  //slice,count,coerceToString
 
 
   /////////////
@@ -443,6 +479,11 @@ type
     procedure Chain(Next:IRethinkDBTerm);
     function Next:IRethinkDBTerm;
     procedure Build(b:TRethinkDBBuilder); virtual; abstract;
+
+    function do_(const fn:IRethinkDBTerm):IRethinkDBTerm; overload;
+    function do_(const fn:IRethinkDBTerm; const args:array of OleVariant):IRethinkDBTerm; overload;
+    function typeOf:IRethinkDBDatum;
+    function info:IRethinkDBObject;
 
   public
     constructor Create;
@@ -488,6 +529,9 @@ type
     function gt(const v:OleVariant):IRethinkDBBool;
     function ge(const v:OleVariant):IRethinkDBBool;
 
+    function coerceToString:IRethinkDBDatum;
+    function toJSON:IRethinkDBDatum;
+
     function add_(const v:OleVariant):IRethinkDBDatum;
     function sub_(const v:OleVariant):IRethinkDBDatum;
     function mul_(const v:OleVariant):IRethinkDBDatum;
@@ -524,12 +568,15 @@ type
     function seconds:IRethinkDBDatum;
     function toIso8601:IRethinkDBDatum;
     function toEpochTime:IRethinkDBDatum;
+    function default(const Value:OleVariant):IRethinkDBDatum; overload;
+    function default(const fn:IRethinkDBTerm):IRethinkDBDatum; overload;
 
     //IRethinkDBArray
     function filter_a(const KeyValue:IJSONDocument;const Options:IJSONDocument=nil):IRethinkDBArray; overload;
     function filter_a(const Predicate:IRethinkDBTerm;const Options:IJSONDocument=nil):IRethinkDBArray; overload;
     function innerJoin(const otherArray,predicate:IRethinkDBTerm):IRethinkDBArray;
     function outerJoin(const otherArray,predicate:IRethinkDBTerm):IRethinkDBArray;
+    function coerceToObject:IRethinkDBObject;
 
     function append(const v:OleVariant):IRethinkDBDatum;
     function prepend(const v:OleVariant):IRethinkDBDatum;
@@ -571,6 +618,7 @@ type
     function without_o(const PathSpec:array of OleVariant):IRethinkDBObject;
     function merge_o(const x:array of IRethinkDBObject):IRethinkDBObject;
     function getField_o(const FieldName:WideString):IRethinkDBDatum;
+    function coerceToArray:IRethinkDBArray;
 
     //IRethinkDBSingleSelection
     function update(const doc:IJSONDocument;const Options:IJSONDocument=nil):IRethinkDBObject; overload;
@@ -585,6 +633,7 @@ type
     function and_(const b:IRethinkDBBool):IRethinkDBBool;
     function or_(const b:IRethinkDBBool):IRethinkDBBool;
     function not_:IRethinkDBBool;
+    function branch(const trueAction, falseAction:IRethinkDBTerm):IRethinkDBTerm;
   end;
 
   TRethinkDBDatabase=class(TRethinkDBValue,IRethinkDBDatabase)
@@ -640,6 +689,11 @@ type
     function merge_s(const x:array of IRethinkDBObject):IRethinkDBStream;
     function field_s(const FieldName:WideString):IRethinkDBSequence;
     function getField_s(const FieldName:WideString):IRethinkDBSequence;
+    function forEach(const fn:IRethinkDBTerm):IRethinkDBTerm;
+    function default(const Value:OleVariant):IRethinkDBDatum; overload;
+    function default(const fn:IRethinkDBTerm):IRethinkDBDatum; overload;
+    function coerceToArray:IRethinkDBArray;
+    function coerceToObject:IRethinkDBObject;
 
     //IRethinkDBStream
     function changes(const Options:IJSONDocument=nil):IRethinkDBStream;
@@ -692,7 +746,7 @@ type
 
     function between(const LowerKey,UpperKey:WideString;const Options:IJSONDocument=nil):IRethinkDBTableSlice;
     function orderBy_t1(const v:OleVariant):IRethinkDBTableSlice;
-    function orderBy_t(const vv:array of OleVariant):IRethinkDBTableSlice; 
+    function orderBy_t(const vv:array of OleVariant):IRethinkDBTableSlice;
 
     function distinct_t(const indexName:WideString=''):IRethinkDBStream;
 
@@ -1253,13 +1307,13 @@ begin
 end;
 
 class function TRethinkDB.time(dYear, dMonth, dDay: word;
-  const timeZone: WideString):IRethinkDBDatum; overload;
+  const timeZone: WideString):IRethinkDBDatum;
 begin
   Result:=TRethinkDBDatum.Create(TermType_TIME,[x(dYear),x(dMonth),x(dDay),x(timeZone)]);
 end;
 
 class function TRethinkDB.time(dYear, dMonth, dDay, tHour, tMinute, tSecond: word;
-  const timeZone: WideString):IRethinkDBDatum; overload;
+  const timeZone: WideString):IRethinkDBDatum;
 begin
   Result:=TRethinkDBDatum.Create(TermType_TIME,[x(dYear),x(dMonth),x(dDay),
     x(tHour),x(tMinute),x(tSecond),x(timeZone)]);
@@ -1277,6 +1331,64 @@ begin
   else
     Result:=TRethinkDBDatum.Create(TermType_ISO8601,x(d),
       JSON(['defaultTimeZone',defaultTimeZone]));
+end;
+
+class function TRethinkDB.do_(const fn:IRethinkDBTerm):IRethinkDBTerm;
+begin
+  Result:=TRethinkDBValue.Create(TermType_FUNCALL,fn);
+end;
+
+class function TRethinkDB.do_(const fn:IRethinkDBTerm;
+  const args:array of OleVariant):IRethinkDBTerm;
+begin
+  Result:=TRethinkDBValue.Create(TermType_FUNCALL,xo(fn,args));
+end;
+
+class function TRethinkDB.branch(const test:IRethinkDBBool;
+  const trueAction, falseAction:IRethinkDBTerm):IRethinkDBTerm;
+begin
+  Result:=TRethinkDBValue.Create(TermType_BRANCH,[test,trueAction,falseAction]);
+end;
+
+class function TRethinkDB.error(const Msg:WideString): IRethinkDBTerm;
+begin
+  Result:=TRethinkDBValue.Create(TermType_ERROR,x(Msg));
+end;
+
+class function TRethinkDB.info(const x:IRethinkDBTerm): IRethinkDBObject;
+begin
+  Result:=TRethinkDBDatum.Create(TermType_INFO,x);
+end;
+
+class function TRethinkDB.js(const jsCode:WideString):IRethinkDBDatum;
+begin
+  Result:=TRethinkDBDatum.Create(TermType_JAVASCRIPT,x(jsCode));
+end;
+
+class function TRethinkDB.js(const jsCode:WideString;timeoutSeconds:double):IRethinkDBDatum;
+begin
+  Result:=TRethinkDBDatum.Create(TermType_JAVASCRIPT,x(jsCode),
+    JSON(['timeout',timeoutSeconds]));
+end;
+
+class function TRethinkDB.json(const jsonCode:WideString):IRethinkDBDatum;
+begin
+  Result:=TRethinkDBDatum.Create(TermType_JSON,x(jsonCode));
+end;
+
+class function TRethinkDB.range: IRethinkDBStream;
+begin
+  Result:=TRethinkDBSet.Create(TermType_RANGE,nil);
+end;
+
+class function TRethinkDB.range(endValue:integer): IRethinkDBStream;
+begin
+  Result:=TRethinkDBSet.Create(TermType_RANGE,x(endValue));
+end;
+
+class function TRethinkDB.range(startValue,endValue:integer): IRethinkDBStream;
+begin
+  Result:=TRethinkDBSet.Create(TermType_RANGE,[x(startValue),x(endValue)]);
 end;
 
 { TRethinkDBTerm }
@@ -1317,6 +1429,39 @@ function TRethinkDBTerm.Run(Connection: TRethinkDBConnection;
   const Options: IJSONDocument): IRethinkDBResultSet;
 begin
   Result:=TRethinkDBResultSet.Create(Connection,Connection.SendTerm(Self));
+end;
+
+function TRethinkDBTerm.do_(const fn:IRethinkDBTerm):IRethinkDBTerm;
+begin
+  Result:=TRethinkDBValue.Create(TermType_FUNCALL,[fn,Self]);
+end;
+
+function TRethinkDBTerm.do_(const fn:IRethinkDBTerm; const args:array of OleVariant):IRethinkDBTerm;
+var
+  i,l:integer;
+  a:array of IRethinkDBTerm;
+begin
+  l:=Length(args);
+  SetLength(a,l+2);
+  a[0]:=fn;
+  a[1]:=Self;
+  i:=0;
+  while i<>l do
+   begin
+    a[i+2]:=TRethinkDB.xx(args[i]);
+    inc(i);
+   end;
+  Result:=TRethinkDBValue.Create(TermType_FUNCALL,a);
+end;
+
+function TRethinkDBTerm.typeOf:IRethinkDBDatum;
+begin
+  Result:=TRethinkDBDatum.Create(TermType_TYPE_OF,Self);
+end;
+
+function TRethinkDBTerm.info:IRethinkDBObject;
+begin
+  Result:=TRethinkDBDatum.Create(TermType_INFO,Self);
 end;
 
 { TRethinkDBValue }
@@ -1572,6 +1717,16 @@ begin
   Result:=TRethinkDBDatum.Create(TermType_ROUND,Self);
 end;
 
+function TRethinkDBDatum.coerceToString:IRethinkDBDatum;
+begin
+  Result:=TRethinkDBDatum.Create(TermType_COERCE_TO,[Self,r.x('string')]);
+end;
+
+function TRethinkDBDatum.toJSON:IRethinkDBDatum;
+begin
+  Result:=TRethinkDBDatum.Create(TermType_TO_JSON_STRING,Self);
+end;
+
 function TRethinkDBDatum.concat(const v: OleVariant): IRethinkDBDatum;
 begin
   Result:=TRethinkDBBool.Create(TermType_ADD,[Self,r.xx(v)]);//yes it's "ADD", see ql2.proto
@@ -1705,8 +1860,18 @@ begin
   Result:=TRethinkDBDatum.Create(TermType_GET_FIELD,[Self,r.x(FieldName)]);
 end;
 
+function TRethinkDBDatum.coerceToObject:IRethinkDBObject;
+begin
+  Result:=TRethinkDBDatum.Create(TermType_COERCE_TO,[Self,r.x('object')]);
+end;
+
+function TRethinkDBDatum.coerceToArray:IRethinkDBArray;
+begin
+  Result:=TRethinkDBDatum.Create(TermType_COERCE_TO,[Self,r.x('array')]);
+end;
+
 function TRethinkDBDatum.count: IRethinkDBDatum;
-begin
+begin
   Result:=TRethinkDBDatum.Create(TermType_COUNT,Self);
 end;
 
@@ -1826,6 +1991,19 @@ end;
 function TRethinkDBDatum.toEpochTime:IRethinkDBDatum;
 begin
   Result:=TRethinkDBDatum.Create(TermType_TO_EPOCH_TIME,Self);
+end;
+
+function TRethinkDBDatum.default(const Value:OleVariant):IRethinkDBDatum;
+begin
+  Result:=TRethinkDBDatum.Create(TermType_DEFAULT,[Self,r.xx(Value)]);
+end;
+
+function TRethinkDBDatum.default(const fn:IRethinkDBTerm):IRethinkDBDatum;
+begin
+  Result:=TRethinkDBDatum.Create(TermType_DEFAULT,[Self,
+    TRethinkDBValue.Create(TermType_FUNC,[
+      TRethinkDBValue.Create(TermType_MAKE_ARRAY,r.x(1)),fn])
+    ]);
 end;
 
 function TRethinkDBDatum.slice_n1(startOffset:cardinal;
@@ -2030,6 +2208,11 @@ end;
 function TRethinkDBBool.not_: IRethinkDBBool;
 begin
   Result:=TRethinkDBBool.Create(TermType_NOT,Self);
+end;
+
+function TRethinkDBBool.branch(const trueAction, falseAction:IRethinkDBTerm):IRethinkDBTerm;
+begin
+  Result:=TRethinkDBValue.Create(TermType_BRANCH,[Self,trueAction,falseAction]);
 end;
 
 { TRethinkDBConstant }
@@ -2548,6 +2731,34 @@ end;
 function TRethinkDBSet.getField_s(const FieldName:WideString):IRethinkDBSequence;
 begin
   Result:=TRethinkDBSet.Create(TermType_GET_FIELD,[Self,r.x(FieldName)]);
+end;
+
+function TRethinkDBSet.forEach(const fn:IRethinkDBTerm):IRethinkDBTerm;
+begin
+  Result:=TRethinkDBDatum.Create(TermType_FOR_EACH,[Self,fn]);
+end;
+
+function TRethinkDBSet.default(const Value:OleVariant):IRethinkDBDatum;
+begin
+  Result:=TRethinkDBDatum.Create(TermType_DEFAULT,[Self,r.xx(Value)]);
+end;
+
+function TRethinkDBSet.default(const fn:IRethinkDBTerm):IRethinkDBDatum;
+begin
+  Result:=TRethinkDBDatum.Create(TermType_DEFAULT,[Self,
+    TRethinkDBValue.Create(TermType_FUNC,[
+      TRethinkDBValue.Create(TermType_MAKE_ARRAY,r.x(1)),fn])
+    ]);
+end;
+
+function TRethinkDBSet.coerceToArray:IRethinkDBArray;
+begin
+  Result:=TRethinkDBDatum.Create(TermType_COERCE_TO,[Self,r.x('array')]);
+end;
+
+function TRethinkDBSet.coerceToObject:IRethinkDBObject;
+begin
+  Result:=TRethinkDBDatum.Create(TermType_COERCE_TO,[Self,r.x('object')]);
 end;
 
 function TRethinkDBSet.changes(const Options:IJSONDocument=nil):IRethinkDBStream;
