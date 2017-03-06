@@ -15,6 +15,7 @@ type
   IRethinkDBBool=interface;//forward
   IRethinkDBArray=interface;//forward
   IRethinkDBObject=interface;//forward
+  IRethinkDBGeometry=interface;//forward
   IRethinkDBSequence=interface;//forward
   IRethinkDBStream=interface;//forward
   IRethinkDBTable=interface;//forward
@@ -32,6 +33,7 @@ type
     class function x(const s:WideString):IRethinkDBTerm; overload;
     class function x(b:boolean):IRethinkDBTerm; overload;
     class function x(v:integer):IRethinkDBTerm; overload;
+    class function x(d:double):IRethinkDBTerm; overload;
     class function x(d:IJSONDocument):IRethinkDBTerm; overload;
     class function xt(const p:IRethinkDBTerm;const a:array of IRethinkDBObject):TRethinkDBTerms;
     class function xa(const p:IRethinkDBTerm;const a:array of WideString):TRethinkDBTerms;
@@ -116,11 +118,20 @@ type
 
     class function js(const jsCode:WideString):IRethinkDBDatum; overload;
     class function js(const jsCode:WideString;timeoutSeconds:double):IRethinkDBDatum; overload;
-    class function json(const jsonCode:WideString):IRethinkDBDatum;
+    class function json_(const jsonCode:WideString):IRethinkDBDatum;
 
     class function range: IRethinkDBStream; overload;
     class function range(endValue:integer): IRethinkDBStream; overload;
     class function range(startValue,endValue:integer): IRethinkDBStream; overload;
+
+    class function point(longitude,latitude:double):IRethinkDBGeometry;
+    class function line(const points:array of IRethinkDBGeometry):IRethinkDBGeometry;
+    class function polygon(const points:array of IRethinkDBGeometry):IRethinkDBGeometry;
+    class function geoJSON(const geoJSON_:IJSONDocument):IRethinkDBGeometry;
+    class function circle(const point:IRethinkDBGeometry;radius:double;
+      const Options:IJSONDocument=nil):IRethinkDBGeometry;
+    class function distance(const geometry1,geometry2:IRethinkDBGeometry;
+      const Options:IJSONDocument=nil):IRethinkDBDatum;
   end;
 
   {$IFDEF DEBUG}
@@ -321,6 +332,17 @@ type
     property field[const FieldName:WideString]:IRethinkDBDatum read field_o; default;
   end;
 
+  IRethinkDBGeometry=interface(IRethinkDBDatum)
+    ['{C12B37A1-246A-42AF-B0C5-BCB0B77B8A09}']
+    function toGeoJSON:IRethinkDBObject;
+    function polygonSub(polygon2:IRethinkDBGeometry):IRethinkDBGeometry;
+    function distance(geometry:IRethinkDBGeometry;
+      const Options:IJSONDocument=nil):IRethinkDBDatum;
+    function fill:IRethinkDBGeometry;
+    function includes(const geometry:IRethinkDBGeometry):IRethinkDBBool;
+    function intersects(const geometry:IRethinkDBGeometry):IRethinkDBBool;
+  end;
+
   IRethinkDBDatabase=interface(IRethinkDBTerm)
     ['{D3D670F6-C882-4935-9E10-7714E4E903FB}']
     function table(const TableName:WideString;
@@ -378,6 +400,8 @@ type
     function default(const fn:IRethinkDBTerm):IRethinkDBDatum; overload;
     function coerceToArray:IRethinkDBArray;
     function coerceToObject:IRethinkDBObject;
+    function includes(const geometry:IRethinkDBGeometry):IRethinkDBSequence;
+    function intersects(const geometry:IRethinkDBGeometry):IRethinkDBSequence;
 
     property field[const FieldName:WideString]:IRethinkDBSequence read field_s; default;
   end;
@@ -458,6 +482,9 @@ type
     function orderBy_t(const vv:array of OleVariant):IRethinkDBTableSlice;
 
     function distinct_t(const indexName:WideString=''):IRethinkDBStream;
+
+    function getIntersecting(const geometry:IRethinkDBGeometry;const indexName:WideString):IRethinkDBSelection;
+    function getNearest(const geometry:IRethinkDBGeometry;const Options:IJSONDocument):IRethinkDBArray;
   end;
 
   //TODO: IRethinkDBBinary
@@ -519,7 +546,7 @@ type
 //https://rethinkdb.com/api/javascript/merge/
 
   TRethinkDBDatum=class(TRethinkDBValue,IRethinkDBDatum,IRethinkDBArray,
-    IRethinkDBObject,IRethinkDBSingleSelection)
+    IRethinkDBObject,IRethinkDBGeometry,IRethinkDBSingleSelection)
 
     //IRethinkDBDatum
     function eq(const v:OleVariant):IRethinkDBBool;
@@ -620,6 +647,15 @@ type
     function getField_o(const FieldName:WideString):IRethinkDBDatum;
     function coerceToArray:IRethinkDBArray;
 
+    //IRethinkDBGeometry
+    function toGeoJSON:IRethinkDBObject;
+    function polygonSub(polygon2:IRethinkDBGeometry):IRethinkDBGeometry;
+    function distance(geometry:IRethinkDBGeometry;
+      const Options:IJSONDocument=nil):IRethinkDBDatum;
+    function fill:IRethinkDBGeometry;
+    function includes(const geometry:IRethinkDBGeometry):IRethinkDBBool;
+    function intersects(const geometry:IRethinkDBGeometry):IRethinkDBBool;
+
     //IRethinkDBSingleSelection
     function update(const doc:IJSONDocument;const Options:IJSONDocument=nil):IRethinkDBObject; overload;
     function update(const fn:IRethinkDBTerm;const Options:IJSONDocument=nil):IRethinkDBObject; overload;
@@ -694,6 +730,8 @@ type
     function default(const fn:IRethinkDBTerm):IRethinkDBDatum; overload;
     function coerceToArray:IRethinkDBArray;
     function coerceToObject:IRethinkDBObject;
+    function includes(const geometry:IRethinkDBGeometry):IRethinkDBSequence;
+    function intersects(const geometry:IRethinkDBGeometry):IRethinkDBSequence;
 
     //IRethinkDBStream
     function changes(const Options:IJSONDocument=nil):IRethinkDBStream;
@@ -749,7 +787,8 @@ type
     function orderBy_t(const vv:array of OleVariant):IRethinkDBTableSlice;
 
     function distinct_t(const indexName:WideString=''):IRethinkDBStream;
-
+    function getIntersecting(const geometry:IRethinkDBGeometry;const indexName:WideString):IRethinkDBSelection;
+    function getNearest(const geometry:IRethinkDBGeometry;const Options:IJSONDocument):IRethinkDBArray;
   end;
 
   TRethinkDBResultSet=class(TTHREADUNSAFEInterfacedObject,IRethinkDBResultSet)
@@ -841,6 +880,35 @@ begin
   Result:=s2;
 end;
 
+function FloatToStrX(d:double):string;
+var
+  ods:char;
+begin
+  {$if CompilerVersion >= 24}
+  ods:=FormatSettings.DecimalSeparator;
+  {$else}
+  ods:=DecimalSeparator;
+  {$ifend}
+
+  try
+
+    {$if CompilerVersion >= 24}
+    FormatSettings.DecimalSeparator:='.';
+    {$else}
+    DecimalSeparator:='.';
+    {$ifend}
+
+    Result:=FloatToStr(d);
+
+  finally
+    {$if CompilerVersion >= 24}
+    FormatSettings.DecimalSeparator:=ods;
+    {$else}
+    DecimalSeparator:=ods;
+    {$ifend}
+  end;
+end;
+
 type
   TRethinkDBFuncBody=class(TRethinkDBTerm,IRethinkDBTerm)
   private
@@ -871,6 +939,11 @@ begin
   Result:=TRethinkDBConstant.Create(IntToStr(v));
 end;
 
+class function TRethinkDB.x(d:double):IRethinkDBTerm;
+begin
+  Result:=TRethinkDBConstant.Create(FloatToStrX(d));
+end;
+
 class function TRethinkDB.xx(const v: OleVariant): IRethinkDBTerm;
 var
   vt:TVarType;
@@ -883,11 +956,15 @@ begin
     case VarType(v) of
       varEmpty,varNull:
         Result:=TRethinkDBConstant.Create('null');
-      varSmallint,varInteger,varSingle,varDouble,varCurrency,
-      $000E,//varDecimal
+      varSmallint,varInteger,
       varShortInt,varByte,varWord,varLongWord,varInt64,
       $0015://varWord64
         Result:=TRethinkDBConstant.Create(UTF8Encode(VarToWideStr(v)));
+
+      varSingle,varDouble,varCurrency,
+      $000E://varDecimal
+        Result:=TRethinkDBConstant.Create(UTF8Encode(FloatToStrX(double(v))));
+
       //varDate://TODO
       varOleStr:
         Result:=x(VarToWideStr(v));
@@ -1371,7 +1448,7 @@ begin
     JSON(['timeout',timeoutSeconds]));
 end;
 
-class function TRethinkDB.json(const jsonCode:WideString):IRethinkDBDatum;
+class function TRethinkDB.json_(const jsonCode:WideString):IRethinkDBDatum;
 begin
   Result:=TRethinkDBDatum.Create(TermType_JSON,x(jsonCode));
 end;
@@ -1389,6 +1466,50 @@ end;
 class function TRethinkDB.range(startValue,endValue:integer): IRethinkDBStream;
 begin
   Result:=TRethinkDBSet.Create(TermType_RANGE,[x(startValue),x(endValue)]);
+end;
+
+class function TRethinkDB.point(longitude,latitude:double):IRethinkDBGeometry;
+begin
+  Result:=TRethinkDBDatum.Create(TermType_POINT,[x(longitude),x(latitude)]);
+end;
+
+class function TRethinkDB.line(const points:array of IRethinkDBGeometry):IRethinkDBGeometry;
+var
+  i,l:integer;
+  xx:array of IRethinkDBTerm;
+begin
+  l:=Length(points);
+  SetLength(xx,l);
+  for i:=0 to l-1 do xx[i]:=points[i];
+  Result:=TRethinkDBDatum.Create(TermType_LINE,xx);
+end;
+
+class function TRethinkDB.polygon(const points:array of IRethinkDBGeometry):IRethinkDBGeometry;
+var
+  i,l:integer;
+  xx:array of IRethinkDBTerm;
+begin
+  l:=Length(points);
+  SetLength(xx,l);
+  for i:=0 to l-1 do xx[i]:=points[i];
+  Result:=TRethinkDBDatum.Create(TermType_POLYGON,xx);
+end;
+
+class function TRethinkDB.geoJSON(const geoJSON_:IJSONDocument):IRethinkDBGeometry;
+begin
+  Result:=TRethinkDBDatum.Create(TermType_GEOJSON,x(geoJSON_));
+end;
+
+class function TRethinkDB.circle(const point:IRethinkDBGeometry;radius:double;
+  const Options:IJSONDocument):IRethinkDBGeometry;
+begin
+  Result:=TRethinkDBDatum.Create(TermType_CIRCLE,[point,x(radius)],Options);
+end;
+
+class function TRethinkDB.distance(const geometry1,geometry2:IRethinkDBGeometry;
+  const Options:IJSONDocument=nil):IRethinkDBDatum;
+begin
+  Result:=TRethinkDBDatum.Create(TermType_DISTANCE,[geometry1,geometry2],Options);
 end;
 
 { TRethinkDBTerm }
@@ -1539,11 +1660,15 @@ begin
       case VarType(e.Value) of
 
         varEmpty,varNull:b('null');
-        varSmallint,varInteger,varSingle,varDouble,varCurrency,
-        $000E,//varDecimal
+        varSmallint,varInteger,
         varShortInt,varByte,varWord,varLongWord,varInt64,
         $0015://varWord64
           b(UTF8Encode(VarToWideStr(e.Value)));
+
+        varSingle,varDouble,varCurrency,
+        $000E://varDecimal
+          b(UTF8Encode(FloatToStrX(double(e.Value))));
+
         //varDate://TODO
         varOleStr:
           b(StringEscape(UTF8Encode(VarToWideStr(e.Value))));
@@ -1869,6 +1994,37 @@ function TRethinkDBDatum.coerceToArray:IRethinkDBArray;
 begin
   Result:=TRethinkDBDatum.Create(TermType_COERCE_TO,[Self,r.x('array')]);
 end;
+
+function TRethinkDBDatum.toGeoJSON:IRethinkDBObject;
+begin
+  Result:=TRethinkDBDatum.Create(TermType_GEOJSON,Self);
+end;
+
+function TRethinkDBDatum.polygonSub(polygon2:IRethinkDBGeometry):IRethinkDBGeometry;
+begin
+  Result:=TRethinkDBDatum.Create(TermType_POLYGON_SUB,[Self,polygon2]);
+end;
+
+function TRethinkDBDatum.distance(geometry:IRethinkDBGeometry;
+  const Options:IJSONDocument):IRethinkDBDatum;
+begin
+  Result:=TRethinkDBDatum.Create(TermType_DISTANCE,[Self,geometry],Options);
+end;
+
+function TRethinkDBDatum.fill:IRethinkDBGeometry;
+begin
+  Result:=TRethinkDBDatum.Create(TermType_FILL,Self);
+end;
+
+function TRethinkDBDatum.includes(const geometry:IRethinkDBGeometry):IRethinkDBBool;
+begin
+  Result:=TRethinkDBBool.Create(TermType_INCLUDES,[Self,geometry]);
+end;
+
+function TRethinkDBDatum.intersects(const geometry:IRethinkDBGeometry):IRethinkDBBool;
+begin
+  Result:=TRethinkDBBool.Create(TermType_INTERSECTS,[Self,geometry]);
+end;
 
 function TRethinkDBDatum.count: IRethinkDBDatum;
 begin
@@ -2761,6 +2917,16 @@ begin
   Result:=TRethinkDBDatum.Create(TermType_COERCE_TO,[Self,r.x('object')]);
 end;
 
+function TRethinkDBSet.includes(const geometry:IRethinkDBGeometry):IRethinkDBSequence;
+begin
+  Result:=TRethinkDBSet.Create(TermType_INCLUDES,[Self,geometry]);
+end;
+
+function TRethinkDBSet.intersects(const geometry:IRethinkDBGeometry):IRethinkDBSequence;
+begin
+  Result:=TRethinkDBSet.Create(TermType_INTERSECTS,[Self,geometry]);
+end;
+
 function TRethinkDBSet.changes(const Options:IJSONDocument=nil):IRethinkDBStream;
 begin
   Result:=TRethinkDBSet.Create(TermType_CHANGES,Self,Options);
@@ -3055,6 +3221,21 @@ var
 begin
   if indexName='' then d:=nil else d:=JSON(['index',indexName]);
   Result:=TRethinkDBSet.Create(TermType_DISTINCT,Self,d);
+end;
+
+function TRethinkDBSet.getIntersecting(const geometry:IRethinkDBGeometry;
+  const indexName:WideString):IRethinkDBSelection;
+begin
+  Result:=TRethinkDBSet.Create(TermType_GET_INTERSECTING,[Self,geometry],
+    JSON(['index',indexName]));
+end;
+
+function TRethinkDBSet.getNearest(const geometry:IRethinkDBGeometry;
+  const Options:IJSONDocument):IRethinkDBArray;
+begin
+  if VarIsNull(Options['index']) then
+    raise ERethinkDBError.Create('getNearest: "index" option required');
+  Result:=TRethinkDBDatum.Create(TermType_GET_NEAREST,[Self,geometry],Options);
 end;
 
 end.
