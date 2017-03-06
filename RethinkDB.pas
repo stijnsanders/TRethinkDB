@@ -352,6 +352,8 @@ type
       const Options:IJSONDocument=nil):IRethinkDBObject;
     function tableDrop(const TableName:WideString):IRethinkDBObject;
     function tableList:IRethinkDBArray;
+
+    function wait(const Options:IJSONDocument=nil):IRethinkDBObject;
   end;
 
   IRethinkDBSelection=interface;//forward
@@ -485,6 +487,9 @@ type
 
     function getIntersecting(const geometry:IRethinkDBGeometry;const indexName:WideString):IRethinkDBSelection;
     function getNearest(const geometry:IRethinkDBGeometry;const Options:IJSONDocument):IRethinkDBArray;
+
+    function status:IRethinkDBSingleSelection;
+    function wait(const Options:IJSONDocument=nil):IRethinkDBObject;
   end;
 
   //TODO: IRethinkDBBinary
@@ -681,6 +686,8 @@ type
       const Options:IJSONDocument=nil):IRethinkDBObject;
     function tableDrop(const TableName:WideString):IRethinkDBObject;
     function tableList:IRethinkDBArray;
+
+    function wait(const Options:IJSONDocument=nil):IRethinkDBObject;
   end;
 
   TRethinkDBSet=class(TRethinkDBValue,IRethinkDBSequence,IRethinkDBStream,
@@ -789,6 +796,9 @@ type
     function distinct_t(const indexName:WideString=''):IRethinkDBStream;
     function getIntersecting(const geometry:IRethinkDBGeometry;const indexName:WideString):IRethinkDBSelection;
     function getNearest(const geometry:IRethinkDBGeometry;const Options:IJSONDocument):IRethinkDBArray;
+
+    function status:IRethinkDBSingleSelection;
+    function wait(const Options:IJSONDocument=nil):IRethinkDBObject;
   end;
 
   TRethinkDBResultSet=class(TTHREADUNSAFEInterfacedObject,IRethinkDBResultSet)
@@ -2695,6 +2705,11 @@ begin
   Result:=TRethinkDBDatum.Create(TermType_TABLE_LIST,Self);
 end;
 
+function TRethinkDBDatabase.wait(const Options:IJSONDocument):IRethinkDBObject;
+begin
+  Result:=TRethinkDBDatum.Create(TermType_WAIT,Self,Options);
+end;
+
 { TRethinkDBSet }
 
 function TRethinkDBSet.innerJoin(const otherSequence,predicate:IRethinkDBTerm):IRethinkDBStream;
@@ -3236,6 +3251,16 @@ begin
   if VarIsNull(Options['index']) then
     raise ERethinkDBError.Create('getNearest: "index" option required');
   Result:=TRethinkDBDatum.Create(TermType_GET_NEAREST,[Self,geometry],Options);
+end;
+
+function TRethinkDBSet.status:IRethinkDBSingleSelection;
+begin
+  TRethinkDBSet.Create(TermType_STATUS,Self);
+end;
+
+function TRethinkDBSet.wait(const Options:IJSONDocument):IRethinkDBObject;
+begin
+  Result:=TRethinkDBDatum.Create(TermType_WAIT,Self,Options);
 end;
 
 end.
