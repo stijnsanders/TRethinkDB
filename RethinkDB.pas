@@ -805,11 +805,15 @@ type
   private
     FConnection:TRethinkDBConnection;
     FToken:int64;
+    FLastRes:TResponseType;
+    FData:IJSONDocument;
+    FSet:IJSONDocArrayBuilder;
+    FSetIndex:integer;
   protected
     constructor Create(rdb:TRethinkDBConnection;token:int64);
   public
     function Get(const d:IJSONDocument):boolean;
-    //TODO: next? each? toArray?
+    destructor Destroy; override;
   end;
 
   ERethinkDBError=class(Exception);
@@ -2667,19 +2671,42 @@ begin
   inherited Create;
   FConnection:=rdb;
   FToken:=token;
+  FData:=nil;//see Get
+  FSet:=nil;//see Get
+end;
+
+destructor TRethinkDBResultSet.Destroy;
+begin
+  FSet:=nil;
+  FData:=nil;
+  inherited;
 end;
 
 function TRethinkDBResultSet.Get(const d: IJSONDocument): boolean;
-var
-  r:TResponseType;
 begin
-  d.Clear;
-
-  FConnection.SendSimple(FToken,QueryType_CONTINUE);
-  r:=FConnection.ReadDoc(FToken,d);
-
-  //Result:=r=ResponseType_SUCCESS_SEQUENCE;
-  Result:=r<>ResponseType_RUNTIME_ERROR;
+  if FData=nil then
+   begin
+    //first read
+    FSet:=JSONDocArray;
+    FSetIndex:=0;
+    FData:=JSON(['r',FSet]);
+    FLastRes:=FConnection.ReadDoc(FToken,FData);
+   end
+  else
+    if (FSetIndex=FSet.Count) and (FLastRes=ResponseType_SUCCESS_PARTIAL) then
+     begin
+      FConnection.SendSimple(FToken,QueryType_CONTINUE);
+      FSetIndex:=0;
+      FLastRes:=FConnection.ReadDoc(FToken,FData);
+     end;
+  if FSetIndex=FSet.Count then
+    Result:=false
+  else
+   begin
+    FSet.LoadItem(FSetIndex,d);
+    inc(FSetIndex);
+    Result:=true;
+   end;
 end;
 
 { TRethinkDBDatabase }
