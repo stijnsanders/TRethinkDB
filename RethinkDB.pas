@@ -171,7 +171,9 @@ type
   end;
 
   IRethinkDBResultSet=interface(IUnknown)
-    function Get(const d:IJSONDocument):boolean;
+    function Get(const d:IJSONDocument):boolean; stdcall;
+    function DataReady:boolean; stdcall;
+    procedure Stop; stdcall;
   end;
 
   TRethinkDBBuilder=procedure(const x:UTF8String) of object;
@@ -691,8 +693,7 @@ type
   end;
 
   TRethinkDBSet=class(TRethinkDBValue,IRethinkDBSequence,IRethinkDBStream,
-    IRethinkDBSelection,IRethinkDBTable,IRethinkDBTableSlice
-    )
+    IRethinkDBSelection,IRethinkDBTable,IRethinkDBTableSlice)
 
     //IRethinkDBSequence
     function innerJoin(const otherSequence,predicate:IRethinkDBTerm):IRethinkDBStream;
@@ -809,10 +810,13 @@ type
     FData:IJSONDocument;
     FSet:IJSONDocArrayBuilder;
     FSetIndex:integer;
+    procedure CheckData;
   protected
     constructor Create(rdb:TRethinkDBConnection;token:int64);
   public
-    function Get(const d:IJSONDocument):boolean;
+    function Get(const d:IJSONDocument):boolean; stdcall;
+    function DataReady:boolean; stdcall;
+    procedure Stop; stdcall;
     destructor Destroy; override;
   end;
 
@@ -828,6 +832,7 @@ type
   ERethinkDBClientError=class(ERethinkDBErrorCode);
   ERethinkDBCompileError=class(ERethinkDBErrorCode);
   ERethinkDBRuntimeError=class(ERethinkDBErrorCode);
+  ERethinkDBGetNoDataReady=class(ERethinkDBError);
 
 
 {$IF not Declared(UTF8ToWideString)}
@@ -2682,7 +2687,7 @@ begin
   inherited;
 end;
 
-function TRethinkDBResultSet.Get(const d: IJSONDocument): boolean;
+procedure TRethinkDBResultSet.CheckData;
 begin
   if FData=nil then
    begin
@@ -2699,14 +2704,37 @@ begin
       FSetIndex:=0;
       FLastRes:=FConnection.ReadDoc(FToken,FData);
      end;
-  if FSetIndex=FSet.Count then
-    Result:=false
+end;
+
+function TRethinkDBResultSet.Get(const d: IJSONDocument): boolean;
+begin
+  CheckData;
+  if (FSet=nil) or (FSetIndex=FSet.Count) then
+    if FLastRes=ResponseType_SUCCESS_PARTIAL then
+      raise ERethinkDBGetNoDataReady.Create('Get called, but no data is available now')
+    else
+      Result:=false
   else
    begin
     FSet.LoadItem(FSetIndex,d);
     inc(FSetIndex);
     Result:=true;
    end;
+end;
+
+function TRethinkDBResultSet.DataReady:boolean;
+begin
+  CheckData;
+  Result:=(FSet<>nil) and (FSetIndex<>FSet.Count);
+end;
+
+procedure TRethinkDBResultSet.Stop;
+begin
+  //FConnection:=nil;//?
+  FData:=nil;
+  FSet:=nil;
+  FLastRes:=ResponseType_CLIENT_ERROR;
+  FConnection.SendSimple(FToken,QueryType_STOP);
 end;
 
 { TRethinkDBDatabase }
