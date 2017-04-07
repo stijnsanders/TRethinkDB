@@ -501,7 +501,9 @@ type
   /////////////
   // implementations
 
-  TRethinkDBTerm=class(TTHREADUNSAFEInterfacedObject,IRethinkDBTerm)//abstract
+  TRethinkDBImplBaseObj=TJSONImplBaseObj;
+
+  TRethinkDBTerm=class(TRethinkDBImplBaseObj,IRethinkDBTerm)//abstract
   private
     FNext:IRethinkDBTerm;
   protected
@@ -802,13 +804,13 @@ type
     function wait(const Options:IJSONDocument=nil):IRethinkDBObject;
   end;
 
-  TRethinkDBResultSet=class(TTHREADUNSAFEInterfacedObject,IRethinkDBResultSet)
+  TRethinkDBResultSet=class(TRethinkDBImplBaseObj,IRethinkDBResultSet)
   private
     FConnection:TRethinkDBConnection;
     FToken:int64;
     FLastRes:TResponseType;
     FData:IJSONDocument;
-    FSet:IJSONDocArrayBuilder;
+    FSet:IJSONDocArray;
     FSetIndex:integer;
     procedure CheckData;
   protected
